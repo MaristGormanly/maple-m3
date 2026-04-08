@@ -519,7 +519,7 @@ We will demonstrate this improvement across three key axes:
 | :---- | :---- | :---- |
 | **App Platform (Compute)** | 2x Shared Containers ($5.00/each) | $10.00 |
 | **Managed PostgreSQL** | Basic Node (1GB RAM / 10GB Disk) | $15.00 |
-| **AI Generation API** | Frontier Model API (e.g., Claude or GPT-4o) | \~$20.00 |
+| **AI Generation API** | Local Inference (DGX Spark via Ollama) | $0.00 |
 | **Embedding API** | nomic-embed-text | $0.00 |
 | **TLS/SSL & DNS** | Managed Certificates & Subdomain | $0.00 |
 | **Total** |  | **$45.00** |

@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') }); // Adjusts path to find .env in the server root
+require('dotenv').config({ path: path.join(__dirname, '../../../../.env') });
 const { Client } = require('pg');
 
 const client = new Client({
@@ -63,7 +63,7 @@ async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS DocumentEmbeddings (
         embedding_id SERIAL PRIMARY KEY,
         doc_id INTEGER REFERENCES Documents(doc_id) ON DELETE CASCADE,
-        embedding vector(1536) 
+        embedding vector(768) 
       );
     `);
 

@@ -1,0 +1,6 @@
+This is my spec document: # **MAPLE Campus Services & Student Life Navigator**
+
+Attached: init.js, library.js, and library-services.js
+
+Create a scraper script for Club Directory data. Follow the same format as the library.js and 
+library-services.js scripts. Make sure to follow the guidelines in the spec document.

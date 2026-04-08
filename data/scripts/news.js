@@ -4,7 +4,23 @@ const { Client } = require('pg');
 const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openai;
+let embedModel;
+
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  // Point to the DGX Spark via your SSH tunnel
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1', 
+    apiKey: 'ollama', 
+  });
+  embedModel = 'nomic-embed-text'; 
+} else {
+  // Fallback to real OpenAI if needed later 
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small'; 
+}
 
 const client = new Client({
   user: process.env.DB_USER,
@@ -61,9 +77,9 @@ async function scrapeAndIngestNews() {
       const chunkContent = `Headline: ${article.title}\nDetails: ${article.metadata}\n\nSummary: ${article.content}`;
 
       try {
-        // Generate actual OpenAI embeddings (Expected to 401 until key is set)
+      
         const embeddingResponse = await openai.embeddings.create({
-          model: 'text-embedding-3-small',
+          model: embedModel, 
           input: chunkContent,
         });
         const embeddingVector = embeddingResponse.data[0].embedding;

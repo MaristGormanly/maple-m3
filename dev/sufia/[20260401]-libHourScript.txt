@@ -1,1 +1,0 @@
-Create the scraper script to scrape and ingest the library hours. Use the information provided in the project specification document. Follow the guidelines set forth in the architecture design document. 

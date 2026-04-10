@@ -1,0 +1,26 @@
+Goal: Initialize the Express server for Milestone 2, build the centralized LLM service wrapper, and migrate the entire data pipeline and AI architecture to use local models on the NVIDIA DGX Spark (via Ollama) to eliminate cloud costs.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Iterative AI Debugging: Directly feeding exact terminal stack traces (e.g., the `SASL: SCRAM` and `ECONNREFUSED` errors) into the prompt to provide the AI with precise runtime context for troubleshooting environment and networking issues.
+- Contextual Grounding: Explicitly binding the AI to the rules of the project by referencing the "project spec document," "architecture guide," and "DGX spark pdf" in the prompts, ensuring the generated code didn't deviate from the required stack.
+- Chain of Thought / Architecture Reasoning: Asking "What is the best next step..." rather than demanding a specific file. This forced the AI to reason through the project's dependency graph and explain *why* a specific service should be built next.
+
+Prompts Used:
+1. "Just going back to milestone1: I remember when I ran the clubs.js script, it would run and then timeout... Can you help me figure out the issue and fix it?"
+2. "Here is the package_lock.json and package.json in the root of my project. Do I still need to install dependencies within the server folder?"
+3. "What is the best next step after consulting the project spec document and the architecture guide?" 
+4. "Our team wants to switch from the OpenAI embeddings model to nomic-embed which is free and available to the students. What steps do we need to take to make this switch?"
+5. "I changed the embeddings vector to 768 and am trying to run the script... getting this error: Error initializing database: Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string."
+6. "I was testing the switch and got this output when trying to run the clubs.js script... [ECONNREFUSED] TypeError: fetch failed."
+7. "Are there any changes I have to make to the few milestone 2 files I made to align with the DGX spark pdf?"
+
+Results & Refinements:
+- Data Pipeline Debugging: The AI identified that the `clubs.js` script was timing out because it unnecessarily used Playwright's `networkidle` for a static page. We rewrote the script to use Cheerio, adhering to the spec and fixing the timeout.
+- Backend Initialization: Set up an isolated, lightweight `package.json` inside the `server/` directory (excluding heavy scraping tools) to ensure smooth deployment to DigitalOcean later. Generated the base Express app (`index.js`).
+- LLM Service Wrapper: Built the initial `llm.js` service to centralize AI API calls and enforce the 30-second timeout mandated by the architecture guide.
+- DGX Spark Migration (Database): Updated the `init.js` database script to change the `DocumentEmbeddings` column from 1536 dimensions to 768 dimensions for the `nomic-embed-text` model. Resolved a DB connection crash by fixing the `dotenv` path to look three directories up at the root `.env` file.
+- DGX Spark Migration (Scrapers & SSH Tunnel): Updated all data ingestion scripts to dynamically toggle to `http://localhost:11434/v1` when `USE_LOCAL_MODEL=true`. Diagnosed an `ECONNREFUSED` fetch error by establishing the required background SSH tunnel to the campus Spark server.
+- DGX Spark Migration (LLM Wrapper): Modified `llm.js` to default to `llama3.1:8b` locally and zeroed out the cost-tracking variables since the Spark hardware is free.
+- Commits Pushed: Updated clubs scraper, server package files, Express server, LLM wrapper, DB init script, scraping scripts (for new embed model), and updated docs to account for the local model. Merged the data-scraping feature branch.

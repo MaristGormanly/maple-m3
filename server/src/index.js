@@ -1,54 +1,42 @@
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
-const { Client } = require('pg');
-
-// Load environment variables from the root .env file
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+
+const { corsMiddleware } = require('./middleware/security');
+const campusRoutes = require('./routes/campus');
+const retrievalService = require('./services/retrieval');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors()); // Required by security baseline
-app.use(express.json()); // Parses incoming JSON payloads
+app.use(express.json());
+app.use(corsMiddleware);
 
-// Initialize PostgreSQL Client to ensure DB is reachable
-const dbClient = new Client({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-});
-
-// Basic Health Check Route
 app.get('/health', async (req, res) => {
   try {
-    res.status(200).json({ 
-      status: 'healthy', 
-      message: 'MAPLE M3 Campus Services API is running.' 
-    });
+    const db = retrievalService.getDbClient();
+    await db.query('SELECT 1'); 
+    res.status(200).json({ status: 'healthy', message: 'MAPLE M3 API is running.' });
   } catch (error) {
-    res.status(500).json({ status: 'error', message: error.message });
+    res.status(500).json({ status: 'error', message: 'DB connection failed.' });
   }
 });
 
-// Start the Server
+app.use('/api/v1/campus', campusRoutes);
+
 async function startServer() {
   try {
-    await dbClient.connect();
-    console.log('Connected to MAPLE M3 PostgreSQL Database');
+    // Fix: Await DB readiness before opening the port
+    await retrievalService.connectDB();
     
-    // Import the chat routes
-    const chatRoutes = require('./routes/chat');
-    app.use('/api/v1/campus', chatRoutes);
-
     app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
+      console.log(`===================================================`);
+      console.log(`🍁 MAPLE M3 Backend running on http://localhost:${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`===================================================`);
     });
   } catch (error) {
-    console.error('Failed to start server or connect to database:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }

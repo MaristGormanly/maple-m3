@@ -1,84 +1,101 @@
 const { OpenAI } = require('openai');
+const logger = require('../utils/logger');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
 
 let openai;
-// Initialize the client based on the environment toggle
+let targetModel;
+
 if (process.env.USE_LOCAL_MODEL === 'true') {
-  openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1', 
-    apiKey: 'ollama', 
-  });
+  openai = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' });
+  targetModel = 'llama3.1:8b';
 } else {
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  targetModel = 'gpt-4o-mini';
 }
 
-// Cost constants for cloud models
-const PRICING = {
-  input: 0.00015 / 1000, 
-  output: 0.00060 / 1000
-};
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const llmService = {
-  async complete({ systemPrompt, messages, model, maxTokens = 1024, temperature = 0.3 }) {
+  async complete({ systemPrompt, messages, maxTokens = 1024, temperature = 0.3, conversationId = 'unknown' }) {
+    const payloadMessages = [{ role: 'system', content: systemPrompt }, ...messages];
+
+    let attempt = 0;
+    const maxRetries = 2;
     const startTime = Date.now();
-    
-    const payloadMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages
-    ];
 
-    // Determine the default model based on the environment
-    let targetModel = model;
-    if (!targetModel) {
-      targetModel = process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
-    }
+    while (attempt <= maxRetries) {
+      try {
+        const response = await Promise.race([
+          openai.chat.completions.create({
+            model: targetModel,
+            messages: payloadMessages,
+            max_tokens: maxTokens,
+            temperature,
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('LLM_TIMEOUT')), 30000))
+        ]);
 
-    try {
-      const response = await Promise.race([
-        openai.chat.completions.create({
+        const latencyMs = Date.now() - startTime;
+        const inputTokens = response.usage?.prompt_tokens || 0;
+        const outputTokens = response.usage?.completion_tokens || 0;
+        
+        const costUsd = process.env.USE_LOCAL_MODEL === 'true' 
+          ? 0.00 
+          : (inputTokens * (0.00015/1000)) + (outputTokens * (0.00060/1000));
+
+        logger.logLLMCall({
+          conversation_id: conversationId,
           model: targetModel,
-          messages: payloadMessages,
-          max_tokens: maxTokens,
-          temperature,
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('LLM_TIMEOUT')), 30000)
-        )
-      ]);
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          latency_ms: latencyMs,
+          estimated_cost_usd: costUsd,
+          success: true,
+          error: null
+        });
 
-      const latencyMs = Date.now() - startTime;
-      const inputTokens = response.usage?.prompt_tokens || 0;
-      const outputTokens = response.usage?.completion_tokens || 0;
-      
-      // Calculate cost: Spark is free, OpenAI costs money
-      let estimatedCost = 0;
-      if (process.env.USE_LOCAL_MODEL !== 'true') {
-        estimatedCost = (inputTokens * PRICING.input) + (outputTokens * PRICING.output);
+        return {
+          success: true,
+          content: response.choices[0].message.content,
+          model: targetModel,
+          usage: { inputTokens, outputTokens, costUsd },
+          latencyMs
+        };
+
+      } catch (error) {
+        attempt++;
+        const isTimeout = error.message === 'LLM_TIMEOUT';
+        
+        // Fix: Safely check error status (e.g., 400s usually mean bad prompt, no need to retry)
+        const status = error?.status || 500;
+        
+        if (attempt > maxRetries || (!isTimeout && status >= 400 && status < 500)) {
+          const latencyMs = Date.now() - startTime;
+          logger.logLLMCall({
+            conversation_id: conversationId,
+            model: targetModel,
+            latency_ms: latencyMs,
+            success: false,
+            error: isTimeout ? 'Request timed out' : error.message
+          });
+
+          return {
+            success: false,
+            content: null,
+            error: isTimeout ? 'Request timed out' : 'Provider error',
+            latencyMs
+          };
+        }
+        await wait(Math.pow(2, attempt - 1) * 1000);
       }
-
-      return {
-        success: true,
-        content: response.choices[0].message.content,
-        usage: {
-          inputTokens,
-          outputTokens,
-          costUsd: parseFloat(estimatedCost.toFixed(6))
-        },
-        latencyMs
-      };
-
-    } catch (error) {
-      const latencyMs = Date.now() - startTime;
-      console.error('[LLM Service Error]:', error.message);
-      
-      return {
-        success: false,
-        content: null,
-        error: error.message === 'LLM_TIMEOUT' ? 'Request timed out' : 'Provider error',
-        latencyMs
-      };
     }
+    return {
+      success: false,
+      content: null,
+      error: 'Max retries exceeded or unexpected LLM failure',
+      latencyMs: Date.now() - startTime
+    };
   }
 };
 

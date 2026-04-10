@@ -1,15 +1,20 @@
 const { OpenAI } = require('openai');
 const { Client } = require('pg');
+const logger = require('../utils/logger');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
 
-// Point directly to the DGX Spark via your local SSH tunnel
-const openai = new OpenAI({
-  baseURL: 'http://localhost:11434/v1',
-  apiKey: 'ollama', 
-});
+// Setup OpenAI client with toggle
+let openai;
+let embedModel;
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  openai = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' });
+  embedModel = 'nomic-embed-text';
+} else {
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  embedModel = 'text-embedding-3-small';
+}
 
-// Initialize PostgreSQL Client
 const dbClient = new Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -18,70 +23,79 @@ const dbClient = new Client({
   port: process.env.DB_PORT,
 });
 
-// Connect to the DB once when the service loads
-dbClient.connect().catch(err => console.error('Retrieval Service DB Connection Error:', err));
-
 const retrievalService = {
-  /**
-   * Embeds a query and retrieves the top matching document chunks from PostgreSQL.
-   * @param {string} query - The student's question
-   * @returns {Object} { chunks: Array, metadata: Object }
-   */
-  async search(query) {
-    const SIMILARITY_THRESHOLD = 0.70; // Mandated guardrail
-    const TOP_K = 5; // Mandated default limit
+  // Explicit connect method to prevent race conditions
+  async connectDB() {
+    try {
+      await dbClient.connect();
+      console.log('Retrieval Service connected to PostgreSQL.');
+    } catch (err) {
+      console.error('Retrieval Service DB Error:', err);
+      throw err;
+    }
+  },
+
+  getDbClient: () => dbClient,
+
+  async search(query, domainFilter = null, conversationId = 'unknown') {
+    const SIMILARITY_THRESHOLD = 0.70;
+    const TOP_K = 5;
 
     try {
-      // 1. Generate the vector for the user's query using the local model
       const embeddingResponse = await openai.embeddings.create({
-        model: 'nomic-embed-text', // 768-dimension local model
+        model: embedModel,
         input: query,
       });
-      const queryVector = embeddingResponse.data[0].embedding;
-      const vectorString = `[${queryVector.join(',')}]`;
+      const vectorString = `[${embeddingResponse.data[0].embedding.join(',')}]`;
 
-      // 2. Perform Cosine Similarity Search in PostgreSQL
-      // pgvector uses `<=>` for cosine distance. Cosine Similarity = 1 - Cosine Distance.
+      let filterSql = '';
+      const queryParams = [vectorString, SIMILARITY_THRESHOLD, TOP_K];
+      
+      // Exact-match pre-filtering based on the Data Ingestion spec
+      if (domainFilter) {
+        filterSql = `AND d.source_type = $4`;
+        queryParams.push(domainFilter);
+      }
+
+      // NOTE: We intentionally removed the blunt SQL temporal filter. 
+      // Freshness is managed via CRON pipeline re-ingestion, and the LLM handles temporal logic via injected last_updated metadata.
+
       const searchQuery = `
         SELECT 
-          d.source_title, 
-          d.source_url, 
-          d.source_type, 
-          d.content,
-          d.doc_id,
+          d.doc_id, d.chunk_index, d.source_title, d.source_url, d.source_type, d.last_updated, d.content,
           (1 - (e.embedding <=> $1::vector)) AS relevance_score
         FROM DocumentEmbeddings e
         JOIN Documents d ON e.doc_id = d.doc_id
-        WHERE (1 - (e.embedding <=> $1::vector)) >= $2
+        WHERE (1 - (e.embedding <=> $1::vector)) >= $2 ${filterSql}
         ORDER BY relevance_score DESC
         LIMIT $3;
       `;
 
-      const result = await dbClient.query(searchQuery, [vectorString, SIMILARITY_THRESHOLD, TOP_K]);
+      const result = await dbClient.query(searchQuery, queryParams);
       const chunks = result.rows;
 
-      // 3. Extract logging metrics for the controller 
-      const topScore = chunks.length > 0 ? parseFloat(chunks[0].relevance_score).toFixed(4) : null;
-      const minScore = chunks.length > 0 ? parseFloat(chunks[chunks.length - 1].relevance_score).toFixed(4) : null;
+      const topScore = chunks.length > 0 ? parseFloat(chunks[0].relevance_score) : null;
+      const minScore = chunks.length > 0 ? parseFloat(chunks[chunks.length - 1].relevance_score) : null;
+
+      // Fix: Add conversation_id to retrieval logging
+      logger.logRetrieval({
+        conversation_id: conversationId,
+        query: query,
+        chunks_retrieved: chunks.length,
+        top_score: topScore,
+        min_score: minScore,
+        threshold_applied: SIMILARITY_THRESHOLD
+      });
 
       return {
         success: true,
         chunks: chunks,
-        metadata: {
-          chunks_retrieved: chunks.length,
-          top_score: topScore,
-          min_score: minScore,
-          threshold_applied: SIMILARITY_THRESHOLD
-        }
+        metadata: { chunks_retrieved: chunks.length, top_score: topScore, min_score: minScore, threshold_applied: SIMILARITY_THRESHOLD }
       };
 
     } catch (error) {
-      console.error('[Retrieval Service Error]:', error);
-      return {
-        success: false,
-        chunks: [],
-        error: 'Database retrieval failed'
-      };
+      logger.logError({ source: 'retrievalService', message: error.message });
+      return { success: false, chunks: [], error: 'Database retrieval failed' };
     }
   }
 };

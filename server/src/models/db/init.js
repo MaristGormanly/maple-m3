@@ -15,13 +15,13 @@ async function initializeDatabase() {
     await client.connect();
     console.log('Connected to PostgreSQL database.');
 
-    // Ensure pgvector is enabled 
     await client.query('CREATE EXTENSION IF NOT EXISTS vector;');
     console.log('pgvector extension confirmed.');
 
-    // ---------------------------------------------------------
-    // 1. Relational Entities (Structured Data)
-    // ---------------------------------------------------------
+    // Determine vector dimension based on environment toggle
+    const embedDim = process.env.USE_LOCAL_MODEL === 'true' ? 768 : 1536;
+    console.log(`Setting up vector tables with dimension: ${embedDim}`);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS Users (
         student_id SERIAL PRIMARY KEY,
@@ -42,10 +42,6 @@ async function initializeDatabase() {
       );
     `);
 
-    // ---------------------------------------------------------
-    // 2. Knowledge Base & Vector Entities (Unstructured Data)
-    // ---------------------------------------------------------
-    // Includes all mandatory metadata fields required by the spec
     await client.query(`
       CREATE TABLE IF NOT EXISTS Documents (
         doc_id SERIAL PRIMARY KEY,
@@ -58,21 +54,19 @@ async function initializeDatabase() {
       );
     `);
 
-    // Uses vector(768) to match the local model dimensions
+    // Dynamically set vector dimension
     await client.query(`
       CREATE TABLE IF NOT EXISTS DocumentEmbeddings (
         embedding_id SERIAL PRIMARY KEY,
         doc_id INTEGER REFERENCES Documents(doc_id) ON DELETE CASCADE,
-        embedding vector(768) 
+        embedding vector(${embedDim}) 
       );
     `);
 
-    // ---------------------------------------------------------
-    // 3. Interaction Entities
-    // ---------------------------------------------------------
     await client.query(`
       CREATE TABLE IF NOT EXISTS ChatHistory (
         chat_id SERIAL PRIMARY KEY,
+        conversation_id VARCHAR(255) NOT NULL,
         student_id INTEGER REFERENCES Users(student_id) ON DELETE SET NULL,
         query_message TEXT NOT NULL,
         ai_response TEXT NOT NULL,
@@ -80,7 +74,7 @@ async function initializeDatabase() {
       );
     `);
 
-    console.log('All MAPLE M3 database tables successfully created!');
+    console.log('All MAPLE M3 database tables successfully created/verified!');
 
   } catch (error) {
     console.error('Error initializing database:', error);

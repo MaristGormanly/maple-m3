@@ -1,7 +1,7 @@
 const { OpenAI } = require('openai');
 const { Client } = require('pg');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 // Point directly to the DGX Spark via your local SSH tunnel
 const openai = new OpenAI({

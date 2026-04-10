@@ -40,6 +40,10 @@ async function startServer() {
     await dbClient.connect();
     console.log('Connected to MAPLE M3 PostgreSQL Database');
     
+    // Import the chat routes
+    const chatRoutes = require('./routes/chat');
+    app.use('/api/v1/campus', chatRoutes);
+
     app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
     });

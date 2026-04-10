@@ -58,7 +58,7 @@ async function initializeDatabase() {
       );
     `);
 
-    // Uses vector(1536) to match OpenAI text-embedding-3-small dimensions
+    // Uses vector(768) to match the local model dimensions
     await client.query(`
       CREATE TABLE IF NOT EXISTS DocumentEmbeddings (
         embedding_id SERIAL PRIMARY KEY,

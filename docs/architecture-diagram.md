@@ -47,4 +47,4 @@ graph TD
     LLM --> Frontier
 ```
 
-**Implementation note:** The Week 8 diagram did not depict **POST `/api/v1/campus/ingest`**; in the current codebase, that route triggers **Scrapers/Parsers** in the background and ultimately feeds the same **Embedding Model → PostgreSQL** path shown above.
+**Implementation note:** The design doc diagram did not depict **POST `/api/v1/campus/ingest`**; in the current codebase, that route triggers **Scrapers/Parsers** in the background and ultimately feeds the same **Embedding Model → PostgreSQL** path shown above.

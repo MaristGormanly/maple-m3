@@ -100,7 +100,9 @@ graph TD
     
     %% AI interaction
     12 --> 18
-```    
+```
+
+See also **[architecture-diagram.md](./architecture-diagram.md)** for the implementation-aligned architecture figure: it preserves the same logical layout as the diagram above, with current model naming (Ollama / OpenAI), a note on the **`POST /api/v1/campus/ingest`** path, and cross-references back to this document.
 
 ## Components
 

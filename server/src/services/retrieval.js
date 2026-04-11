@@ -1,10 +1,9 @@
 const { OpenAI } = require('openai');
-const { Client } = require('pg');
+const { Pool } = require('pg'); 
 const logger = require('../utils/logger');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
 
-// Setup OpenAI client with toggle
 let openai;
 let embedModel;
 if (process.env.USE_LOCAL_MODEL === 'true') {
@@ -15,27 +14,31 @@ if (process.env.USE_LOCAL_MODEL === 'true') {
   embedModel = 'text-embedding-3-small';
 }
 
-const dbClient = new Client({
+// Initializing a connection pool to handle concurrent Express requests safely
+const dbPool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
+  max: 10, // Max number of clients in the pool
+  idleTimeoutMillis: 30000
 });
 
 const retrievalService = {
-  // Explicit connect method to prevent race conditions
   async connectDB() {
     try {
-      await dbClient.connect();
-      console.log('Retrieval Service connected to PostgreSQL.');
+      // Test the pool connection
+      const client = await dbPool.connect();
+      console.log('Retrieval Service connected to PostgreSQL Pool.');
+      client.release();
     } catch (err) {
-      console.error('Retrieval Service DB Error:', err);
+      console.error('Retrieval Service DB Pool Error:', err);
       throw err;
     }
   },
 
-  getDbClient: () => dbClient,
+  getDbPool: () => dbPool, // Export the pool
 
   async search(query, domainFilter = null, conversationId = 'unknown') {
     const SIMILARITY_THRESHOLD = 0.70;
@@ -51,14 +54,10 @@ const retrievalService = {
       let filterSql = '';
       const queryParams = [vectorString, SIMILARITY_THRESHOLD, TOP_K];
       
-      // Exact-match pre-filtering based on the Data Ingestion spec
       if (domainFilter) {
         filterSql = `AND d.source_type = $4`;
         queryParams.push(domainFilter);
       }
-
-      // NOTE: We intentionally removed the blunt SQL temporal filter. 
-      // Freshness is managed via CRON pipeline re-ingestion, and the LLM handles temporal logic via injected last_updated metadata.
 
       const searchQuery = `
         SELECT 
@@ -71,13 +70,13 @@ const retrievalService = {
         LIMIT $3;
       `;
 
-      const result = await dbClient.query(searchQuery, queryParams);
+      // Run query against the pool
+      const result = await dbPool.query(searchQuery, queryParams);
       const chunks = result.rows;
 
       const topScore = chunks.length > 0 ? parseFloat(chunks[0].relevance_score) : null;
       const minScore = chunks.length > 0 ? parseFloat(chunks[chunks.length - 1].relevance_score) : null;
 
-      // Fix: Add conversation_id to retrieval logging
       logger.logRetrieval({
         conversation_id: conversationId,
         query: query,
@@ -95,7 +94,17 @@ const retrievalService = {
 
     } catch (error) {
       logger.logError({ source: 'retrievalService', message: error.message });
-      return { success: false, chunks: [], error: 'Database retrieval failed' };
+      return {
+        success: false,
+        chunks: [],
+        error: error.message || 'Database retrieval failed',
+        metadata: {
+          chunks_retrieved: 0,
+          top_score: null,
+          min_score: null,
+          threshold_applied: SIMILARITY_THRESHOLD
+        }
+      };
     }
   }
 };

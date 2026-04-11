@@ -83,6 +83,7 @@ const llmService = {
           return {
             success: false,
             content: null,
+            model: targetModel,
             error: isTimeout ? 'Request timed out' : 'Provider error',
             latencyMs
           };
@@ -93,6 +94,7 @@ const llmService = {
     return {
       success: false,
       content: null,
+      model: targetModel,
       error: 'Max retries exceeded or unexpected LLM failure',
       latencyMs: Date.now() - startTime
     };

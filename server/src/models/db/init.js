@@ -1,8 +1,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../../../.env') });
-const { Client } = require('pg');
+const { Pool } = require('pg'); 
 
-const client = new Client({
+const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
@@ -12,15 +12,20 @@ const client = new Client({
 
 async function initializeDatabase() {
   try {
-    await client.connect();
+    const client = await pool.connect();
     console.log('Connected to PostgreSQL database.');
 
     await client.query('CREATE EXTENSION IF NOT EXISTS vector;');
     console.log('pgvector extension confirmed.');
 
-    // Determine vector dimension based on environment toggle
     const embedDim = process.env.USE_LOCAL_MODEL === 'true' ? 768 : 1536;
-    console.log(`Setting up vector tables with dimension: ${embedDim}`);
+    console.log(`Target vector dimension: ${embedDim}`);
+
+    // Explicit RESET_DB environment variable handling to rebuild schema
+    if (process.env.RESET_DB === 'true') {
+      console.log('RESET_DB is true. Dropping existing tables to rebuild schema...');
+      await client.query('DROP TABLE IF EXISTS ChatHistory, DocumentEmbeddings, Documents, CampusEvents, Users CASCADE;');
+    }
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS Users (
@@ -75,11 +80,12 @@ async function initializeDatabase() {
     `);
 
     console.log('All MAPLE M3 database tables successfully created/verified!');
+    client.release();
 
   } catch (error) {
     console.error('Error initializing database:', error);
   } finally {
-    await client.end();
+    await pool.end();
   }
 }
 

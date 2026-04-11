@@ -14,8 +14,8 @@ app.use(corsMiddleware);
 
 app.get('/health', async (req, res) => {
   try {
-    const db = retrievalService.getDbClient();
-    await db.query('SELECT 1'); 
+    const pool = retrievalService.getDbPool();
+    await pool.query('SELECT 1'); 
     res.status(200).json({ status: 'healthy', message: 'MAPLE M3 API is running.' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: 'DB connection failed.' });
@@ -26,7 +26,7 @@ app.use('/api/v1/campus', campusRoutes);
 
 async function startServer() {
   try {
-    // Fix: Await DB readiness before opening the port
+    // Await DB readiness before opening the port
     await retrievalService.connectDB();
     
     app.listen(PORT, () => {

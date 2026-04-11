@@ -3,12 +3,17 @@ const path = require('path');
 const retrievalService = require('../services/retrieval');
 const llmService = require('../services/llm');
 
-const promptPath = path.join(__dirname, '../../../prompts/system/main-system-prompt.md');
-const rawSystemPrompt = fs.readFileSync(promptPath, 'utf8');
+function resolveLlmModelName() {
+  return process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
+}
 
 const handleChat = async (req, res) => {
   const timestamp = new Date().toISOString();
   const MAPLE_VERSION = "1.0.0";
+  
+  // Dynamically load the prompt on every request so changes don't require a restart
+  const promptPath = path.join(__dirname, '../../../prompts/system/main-system-prompt.md');
+  const rawSystemPrompt = fs.readFileSync(promptPath, 'utf8');
   
   try {
     const { message, conversation_id, context } = req.body;
@@ -36,12 +41,39 @@ const handleChat = async (req, res) => {
     // Pass conversationId for correlation logging
     const retrievalResult = await retrievalService.search(message, domainFilter, activeConversationId);
 
-    if (!retrievalResult.success || retrievalResult.chunks.length === 0) {
+    if (!retrievalResult.success) {
+      return res.status(500).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Retrieval service failed.',
+          details: retrievalResult.error || 'Embedding or database error during vector search.'
+        },
+        metadata: {
+          timestamp,
+          module: 'm3',
+          version: MAPLE_VERSION,
+          ...(retrievalResult.metadata || {})
+        }
+      });
+    }
+
+    if (retrievalResult.chunks.length === 0) {
       return res.status(422).json({
         success: false,
-        data: null, 
-        error: { code: 'RETRIEVAL_FAILED', message: 'Unable to find relevant information for your query.' },
-        metadata: { timestamp, module: "m3", version: MAPLE_VERSION }
+        data: null,
+        error: {
+          code: 'RETRIEVAL_FAILED',
+          message: 'Unable to find relevant information for your query.',
+          details: 'No chunks exceeded the similarity threshold of 0.70.'
+        },
+        metadata: {
+          timestamp,
+          module: 'm3',
+          version: MAPLE_VERSION,
+          ...retrievalResult.metadata
+        }
       });
     }
 
@@ -80,20 +112,30 @@ const handleChat = async (req, res) => {
       return res.status(502).json({
         success: false,
         data: null,
-        error: { code: 'AI_ERROR', message: llmResult.error },
-        metadata: { timestamp, module: "m3", version: MAPLE_VERSION }
+        error: {
+          code: 'AI_ERROR',
+          message: 'LLM API call failed or returned unusable output',
+          details: llmResult.error || undefined
+        },
+        metadata: {
+          timestamp,
+          module: 'm3',
+          version: MAPLE_VERSION,
+          model: llmResult.model || resolveLlmModelName(),
+          ...retrievalResult.metadata
+        }
       });
     }
 
     // Persist with conversation_id safely
-    const db = retrievalService.getDbClient();
+    const pool = retrievalService.getDbPool();
     try {
-      await db.query(`
+      await pool.query(`
         INSERT INTO ChatHistory (conversation_id, query_message, ai_response) 
         VALUES ($1, $2, $3)
       `, [activeConversationId, message, llmResult.content]);
-    } catch (dbErr) {
-      console.error("Failed to insert ChatHistory:", dbErr.message);
+    } catch (poolErr) {
+      console.error("Failed to insert ChatHistory:", poolErr.message);
     }
 
     return res.status(200).json({

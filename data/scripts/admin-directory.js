@@ -36,6 +36,50 @@ const SOURCE_URL = 'https://www.marist.edu/directory';
 const SOURCE_TITLE = 'Marist Administrative Directory';
 const SOURCE_TYPE = 'Admin';
 
+const GOTO_TIMEOUT_MS = 60_000;
+
+function parseMailtoAddress(href) {
+  if (!href || typeof href !== 'string') return null;
+  const trimmed = href.trim();
+  if (!trimmed.toLowerCase().startsWith('mailto:')) return null;
+  const addr = trimmed.slice('mailto:'.length).split('?')[0];
+  try {
+    const decoded = decodeURIComponent(addr).trim();
+    return decoded || null;
+  } catch {
+    return addr.trim() || null;
+  }
+}
+
+function isHttpUrl(href) {
+  if (!href || typeof href !== 'string') return false;
+  try {
+    const u = new URL(href);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function fetchDepartmentEmail(context, url) {
+  const detailPage = await context.newPage();
+  try {
+    await detailPage.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: GOTO_TIMEOUT_MS,
+    });
+    return await detailPage.evaluate(() => {
+      const mailto = document.querySelector('a[href^="mailto:"]');
+      return mailto ? mailto.innerText.trim() : 'N/A';
+    });
+  } catch (err) {
+    console.warn(`Could not load page for email lookup (${url}): ${err.message}`);
+    return 'N/A';
+  } finally {
+    await detailPage.close().catch(() => {});
+  }
+}
+
 async function scrapeAndIngestAdmin() {
   let browser;
   try {
@@ -43,13 +87,14 @@ async function scrapeAndIngestAdmin() {
     console.log('Connected to database. Starting Admin Directory scrape with Playwright...');
 
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const listPage = await context.newPage();
+
     // Navigate to the main directory
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle' });
+    await listPage.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
 
     // 1. Extract all department links and basic info from the table
-    const departments = await page.evaluate(() => {
+    const departments = await listPage.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('table tr')).slice(1);
       return rows.map(row => {
         const cells = row.querySelectorAll('td');
@@ -63,6 +108,8 @@ async function scrapeAndIngestAdmin() {
       }).filter(d => d.url);
     });
 
+    await listPage.close();
+
     if (departments.length === 0) {
       console.log('No directory data could be extracted from the page.');
       return;
@@ -75,13 +122,18 @@ async function scrapeAndIngestAdmin() {
       const dept = departments[i];
       
       try {
-        // Navigate to the individual department page to find the email
-        await page.goto(dept.url, { waitUntil: 'domcontentloaded' });
-        
-        const email = await page.evaluate(() => {
-          const mailto = document.querySelector('a[href^="mailto:"]');
-          return mailto ? mailto.innerText.trim() : 'N/A';
-        });
+        let email = 'N/A';
+        const mailFromHref = parseMailtoAddress(dept.url);
+
+        if (mailFromHref) {
+          email = mailFromHref;
+        } else if (isHttpUrl(dept.url)) {
+          email = await fetchDepartmentEmail(context, dept.url);
+        } else {
+          console.warn(
+            `Skipping deep crawl for ${dept.department}: unsupported URL scheme (${dept.url})`
+          );
+        }
 
         const chunkContent = `Department: ${dept.department}\nLocation: ${dept.location}\nPhone: ${dept.phone}\nEmail: ${email}\nSource: ${dept.url}`;
 

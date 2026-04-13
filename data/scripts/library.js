@@ -4,10 +4,23 @@ const { Client } = require('pg');
 const { chromium } = require('playwright'); // Swapping Cheerio out for Playwright
 const { OpenAI } = require('openai');
 
-// Initialize OpenAI Client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+let embedModel;
+
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  // Point to the DGX Spark via your SSH tunnel
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1', 
+    apiKey: 'ollama', 
+  });
+  embedModel = 'nomic-embed-text'; 
+} else {
+  // Fallback to real OpenAI if needed later 
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small'; 
+}
 
 // Initialize PostgreSQL Client
 const client = new Client({
@@ -74,7 +87,7 @@ async function scrapeAndIngestLibrary() {
       const chunkContent = chunks[i];
 
       const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
+        model: embedModel, 
         input: chunkContent,
       });
       const embeddingVector = embeddingResponse.data[0].embedding;

@@ -1,0 +1,15 @@
+Goal: Initialize the PostgreSQL database with pgvector and create the first Milestone 1 data ingestion scripts for the Cannavino Library hours and student services.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompts Used:
+1. "Help me write the server/db/init.js script that connects to the local database and creates those relational and vector tables. Ensure that this is still following the directory and file structure in the specification document."
+2. "Create the library.js script using Cheerio."
+3. "When I ran the library.js script, this is the output: 'No table data found. The page structure might have changed.'"
+4. "Rewrite the script but do not mock the openAI embedding step, rather write the actual step to be used with our real key."
+
+Results & Refinements:
+- Database Initialization: The AI successfully generated the `init.js` file, establishing the `maple_m3` database connection and structuring the `Documents` and `DocumentEmbeddings` tables with the required 1536-dimensional vector columns and metadata fields.
+- Scraping Pivot: The initial prompt for `library.js` used Cheerio, but testing revealed the library site uses dynamic rendering (likely a calendar widget). I fed the error back to the AI, and it successfully rewrote the script to use Playwright's headless browser to wait for the network to idle before extraction.
+- OpenAI Integration: Integrated the `text-embedding-3-small` API call directly into the `library-services.js` script to finalize the ingestion loop.
+- Commits pushed for the root .gitignore, package configurations, db initialization, and the two library Node scripts.

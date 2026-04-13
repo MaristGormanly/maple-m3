@@ -1,0 +1,16 @@
+Goal: Reorganize the repository to comply with the MAPLE Architecture Guide, resolve Node.js module path issues for the data pipeline, and create the scraping/ingestion scripts for Gym & Pool Hours and Health Services.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompts Used:
+1. "Create the scraper for the Gyms & Pool hours data. Follow the same format as the Library services and Library hours... Examine my current repository structure and help me make any required changes to follow the architecture guidelines."
+2. "Before creating the Gyms and Pool Hours script, should I move my node modules folder to be outside the server folder into the root of the project?"
+3. "I am trying to run the library.js script using the command format you gave but I am getting this error: Cannot find module 'dotenv'"
+4. "Can I delete the package.json and package_lock.json from the server directory? ... What about the node modules folder inside server directory?"
+6. "Create the Health services script next. Follow the guidelines and information in both the specification document and the architecture document."
+
+Results & Refinements:
+- Repository Restructuring & Dependency Fixes: The AI guided the restructuring of the repository, moving scripts to `data/scripts/` to match the MAPLE architecture. To fix the 'dotenv' missing module error, the AI instructed setting up a root-level `package.json` for heavy data ingestion tools (cheerio, playwright), while explicitly advising to keep the `server/package.json` intact for the future API. Updated the `.env` paths in all scripts to `../../.env`.
+- Gym & Pool Scraper: Generated the `gym-pool.js` script using Cheerio. The AI successfully implemented the spec requirement to clean non-ASCII characters from the schedule grids using regex.
+- Health Services Scraper: Generated the `health-services.js` script using Playwright to ensure dynamically rendered text (like accordions) was captured, complete with `text-embedding-3-small` vectorization.
+- Commits Pushed: Updated repo structure, package files/path fixes, Gym & Pool script, dev folder creation, and the Health Services script.

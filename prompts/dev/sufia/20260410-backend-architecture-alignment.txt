@@ -1,0 +1,24 @@
+Goal: Finalize the Lab 2 RAG backend architecture by strictly aligning with the MAPLE Architecture Guide and M3 Project Design Doc. This involved implementing structured JSON logging, security middleware (rate limiting and strict CORS), resolving database race conditions, and fixing a critical schema issue regarding dynamic vector dimensions for local vs. cloud embedding models.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Meta-Prompting (Cross-Tool Feedback Loop): Acted as a bridge between two AI tools by taking the generated code from Gemini, running it through Cursor AI (and peer/instructor review) to identify architectural holes, and feeding that exact feedback back into Gemini to systematically generate fixes.
+- Contextual Grounding: Explicitly provided the "Lab 2 prototype guideline document," "MAPLE Architecture Guide," and specific grading rubrics in the prompts to ensure the AI's solutions adhered to strict project constraints (e.g., standard JSON response envelopes, specific HTTP error codes, and the 0.70 similarity threshold).
+- Iterative AI Debugging: Pasted specific chunks of existing code (like index.js and chat.js) alongside detailed error reports (e.g., "express-rate-limit still not installed", "index.js / DB startup race") to give the AI precise runtime and dependency context for troubleshooting.
+
+Prompts Used:
+1. "Here is the current state of the backend repository... Based on the attached Lab 2 rubric, the code provided, and the feedback on the backend code, what are the exact next steps to continue developing this project for the Lab 2 deadline?"
+2. "Here is my current server/src/index.js file... What should the new code look like to align with the changes we made in the previous prompt?"
+3. "I also have this file in the backend [server/src/routes/chat.js]. What should I do with it?"
+4. "Here is some feedback on the updated backend code. What steps should we take to fix these issues? I have also attached the lab 2 prototype guideline document if helpful..." (Included feedback about missing dependencies, DB race conditions, vector dimension mismatches, and stubbed endpoints).
+
+Results & Refinements:
+- Architecture & Logging Compliance: Extracted the hardcoded system prompt into a version-controlled prompts/system/main-system-prompt.md file. Built a centralized logger.js utility to enforce the required structured JSON logging for all LLM and retrieval events.
+- Security & Middleware Hardening: Installed the missing express-rate-limit dependency. Replaced the generic wildcard cors() with an environment-driven configuration to satisfy the security baseline, and successfully wired up the API rate limiter.
+- DB Race Condition & Vector Dimensions Fixed: Resolved a critical crash risk in init.js by dynamically setting the pgvector column to 768 dimensions for the local nomic-embed-text model and 1536 for cloud mode. Fixed an asynchronous race condition in index.js by forcing the server to await the PostgreSQL connection before opening the port.
+- API Completeness: Cleaned up obsolete routing files (routes/chat.js) in favor of a unified campus.js router. Un-stubbed the /status endpoint to pull real SQL data and the /ingest endpoint to trigger background Node scripts. Updated the chat controller to pass url sources to the frontend and safely persist history using the conversation_id.
+- Commits Pushed:
+  - Create retrieval.js (Multi-index filtering and DB connection logic)
+  - Add campus chat API, prompt and wiring (Extracting prompt, unifying routes, updating chat controller)
+  - Add security, logging, retrieval and LLM updates (Rate limiting, env-driven CORS, DB startup race fix, and dynamic vector dimension schema updates)

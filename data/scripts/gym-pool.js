@@ -1,15 +1,25 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
-const cheerio = require('cheerio');
+const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
-// Initialize OpenAI Client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+let embedModel;
 
-// Initialize PostgreSQL Client
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1', 
+    apiKey: 'ollama', 
+  });
+  embedModel = 'nomic-embed-text'; 
+} else {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small'; 
+}
+
 const client = new Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -18,104 +28,101 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-// Constants from Spec Document
 const SOURCE_URL = 'https://goredfoxes.com/sports/2011/10/3/205308200.aspx';
-const SOURCE_TITLE = 'McCann Center Gym & Pool Hours';
-const SOURCE_TYPE = 'Recreation';
+const SOURCE_TITLE = 'Marist Athletics Facility Hours';
+const SOURCE_TYPE = 'RecCenter';
+const GOTO_TIMEOUT_MS = 60_000;
 
-function chunkText(text, maxWords = 400, overlapWords = 40) {
-  const words = text.split(/\s+/);
-  const chunks = [];
-  let i = 0;
-  
-  while (i < words.length) {
-    const chunk = words.slice(i, i + maxWords).join(' ');
-    chunks.push(chunk);
-    i += maxWords - overlapWords;
-  }
-  return chunks;
-}
-
-async function scrapeAndIngestGym() {
+async function scrapeAndIngestRec() {
+  let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Gym & Pool scrape with Cheerio...');
+    console.log('Connected to database. Starting Rec Center scrape...');
 
-    // 1. Fetch the HTML
-    const response = await fetch(SOURCE_URL);
-    if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
-    const html = await response.text();
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
 
-    // 2. Parse with Cheerio
-    const $ = cheerio.load(html);
-    let extractedText = '';
+    await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
 
-    // Target the main content areas where tables and paragraphs hold the hours
-    $('article, .story-content, table').each((index, element) => {
-      // Extract text and add a newline after block elements to preserve readability
-      const text = $(element).text().replace(/\n\s*\n/g, '\n').trim();
-      if (text) {
-        extractedText += text + '\n';
-      }
+    // Extract the raw text from the content area
+    const facilityData = await page.evaluate(() => {
+      const content = document.querySelector('.article-content')?.innerText || "";
+      
+      // Split logic based on known headers in the HTML provided
+      const buildingHours = content.match(/Building Hours([\s\S]*?)Pool Hours/)?.[1]?.trim();
+      const poolHours = content.match(/Pool Hours([\s\S]*?)Building hours may/)?.[1]?.trim();
+      const mccormick = content.match(/McCormick Hall Fitness Center([\s\S]*?)Marketplace/)?.[1]?.trim();
+      const marketplace = content.match(/Marketplace Fitness Center([\s\S]*?)Please call/)?.[1]?.trim();
+
+      return [
+        { title: "McCann Building Hours", text: buildingHours },
+        { title: "McCann Pool Hours", text: poolHours },
+        { title: "McCormick Hall Fitness Center", text: mccormick },
+        { title: "Marketplace Fitness Center", text: marketplace }
+      ].filter(s => s.text); // Remove empty sections
     });
 
-    if (!extractedText.trim()) {
-      console.log('No specific schedule elements found. Falling back to body parsing...');
-      extractedText = $('body').text().replace(/\n\s*\n/g, '\n').trim();
+    if (facilityData.length === 0) {
+      console.log('No facility data could be extracted.');
+      return;
     }
 
-    // --- REQUIREMENT: Clean non-ASCII characters ---
-    // This regex replaces zero-width spaces, smart quotes, and invisible formatting artifacts with standard spaces
-    extractedText = extractedText.replace(/[^\x00-\x7F]/g, " ");
+    console.log(`Found ${facilityData.length} sections. Generating embeddings...`);
 
-    console.log('Successfully extracted and cleaned schedule text. Chunking data...');
+    for (let i = 0; i < facilityData.length; i++) {
+      const section = facilityData[i];
+      
+      try {
+        // Clean non-ASCII and format the chunk
+        const cleanText = section.text.replace(/[^\x00-\x7F]/g, " ").replace(/\s+/g, ' ').trim();
+        const chunkContent = `${section.title}\n${cleanText}\nSource: ${SOURCE_URL}`;
 
-    // 3. Chunk the Data
-    const chunks = chunkText(extractedText);
-    console.log(`Created ${chunks.length} chunks. Generating OpenAI embeddings...`);
+        // 1. Generate actual embeddings
+        const embeddingResponse = await openai.embeddings.create({
+          model: embedModel, 
+          input: chunkContent,
+        });
+        const embeddingVector = embeddingResponse.data[0].embedding;
 
-    // 4. Generate Embeddings and Insert into Database
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = chunks[i];
+        // 2. Insert into Documents Table (Matching your working example's schema)
+        const docInsertQuery = `
+          INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING doc_id;
+        `;
+        const docResult = await client.query(docInsertQuery, [
+          SOURCE_TITLE,
+          SOURCE_URL,
+          SOURCE_TYPE,
+          i,
+          chunkContent
+        ]);
+        const docId = docResult.rows[0].doc_id;
 
-      const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small', //
-        input: chunkContent,
-      });
-      const embeddingVector = embeddingResponse.data[0].embedding;
+        // 3. Insert into DocumentEmbeddings Table
+        const vectorString = `[${embeddingVector.join(',')}]`;
+        const vectorInsertQuery = `
+          INSERT INTO DocumentEmbeddings (doc_id, embedding)
+          VALUES ($1, $2);
+        `;
+        await client.query(vectorInsertQuery, [docId, vectorString]);
 
-      // Insert into Documents Table with required metadata
-      const docInsertQuery = `
-        INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING doc_id;
-      `;
-      const docResult = await client.query(docInsertQuery, [
-        SOURCE_TITLE,
-        SOURCE_URL,
-        SOURCE_TYPE,
-        i,
-        chunkContent
-      ]);
-      const docId = docResult.rows[0].doc_id;
+        console.log(`Inserted chunk ${i + 1}/${facilityData.length}: ${section.title}`);
 
-      const vectorString = `[${embeddingVector.join(',')}]`;
-      const vectorInsertQuery = `
-        INSERT INTO DocumentEmbeddings (doc_id, embedding)
-        VALUES ($1, $2);
-      `;
-      await client.query(vectorInsertQuery, [docId, vectorString]);
-
-      console.log(`Inserted chunk ${i + 1}/${chunks.length} into vector database.`);
+      } catch (innerError) {
+        console.error(`Error processing section ${section.title}:`, innerError.message);
+      }
     }
 
-    console.log('Gym & Pool data ingestion complete!');
+    console.log('Rec Center ingestion complete!');
 
   } catch (error) {
     console.error('Error during scraping/ingestion:', error);
   } finally {
+    if (browser) await browser.close();
     await client.end();
   }
 }
 
-scrapeAndIngestGym();
+scrapeAndIngestRec();

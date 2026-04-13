@@ -100,7 +100,9 @@ graph TD
     
     %% AI interaction
     12 --> 18
-```    
+```
+
+See also **[architecture-diagram.md](./architecture-diagram.md)** for the implementation-aligned architecture figure: it preserves the same logical layout as the diagram above, with current model naming (Ollama / OpenAI), a note on the **`POST /api/v1/campus/ingest`** path, and cross-references back to this document.
 
 ## Components
 
@@ -289,7 +291,7 @@ We will utilize a cloud-based frontier model via API. This cloud-based approach 
 
 #### **Embedding Model**
 
-OpenAI `text-embedding-3-small`. This model will be used to vectorize all ingested campus data, providing high semantic quality at a low cost.
+`nomic-embed-text`(Hosted locally via Ollama). This 768-dimensional model will be used to vectorize all ingested campus data. Running inference on the local NVIDIA DGX Spark infrastructure provides high semantic quality and fast retrieval performance while eliminating cloud API costs.
 
 #### **Vector Store**
 
@@ -330,7 +332,7 @@ Provide concise, direct answers. You must append a citation for every claim usin
 
 The system will implement a standardized, multi-index RAG retrieval process designed to handle the heterogeneous and dynamic data sources inherent to campus services:
 
-* **Embedding Model & Similarity Metric:** We will use the `text-embedding-3-small` model to generate vectors. Within our `pgvector` database, we will utilize Cosine Similarity to measure the distance between the user's query vector and the stored document chunks.  
+* **Embedding Model & Similarity Metric:** We will use the `nomic-embed-text` model to generate vectors. Within our `pgvector` database, we will utilize Cosine Similarity to measure the distance between the user's query vector and the stored document chunks.  
 * **Filtering (Metadata Pre-filtering):** Because M3 handles diverse data domains (dining, IT, library), we will apply metadata-based pre-filtering before executing the vector search. Queries will be routed to specific "namespaces" or filtered by `source_type` to ensure a query about "printing hours" doesn't retrieve dining hall menus.  
 * **Chunk Metadata:** All ingested documents will be chunked and stored with mandatory metadata, including `source_title`, `source_url`, `source_type`, `last_updated`, and `chunk_index`.  
 * **Top-K Retrieval:** The vector search will retrieve exactly the top 5 most relevant chunks to construct the LLM context window.  
@@ -519,10 +521,10 @@ We will demonstrate this improvement across three key axes:
 | :---- | :---- | :---- |
 | **App Platform (Compute)** | 2x Shared Containers ($5.00/each) | $10.00 |
 | **Managed PostgreSQL** | Basic Node (1GB RAM / 10GB Disk) | $15.00 |
-| **AI Generation API** | Frontier Model API (e.g., Claude or GPT-4o) | \~$20.00 |
-| **Embedding API** | OpenAI text-embedding-3-small | \~$5.00 |
+| **AI Generation API** | Local Inference (DGX Spark via Ollama) | $0.00 |
+| **Embedding API** | nomic-embed-text | $0.00 |
 | **TLS/SSL & DNS** | Managed Certificates & Subdomain | $0.00 |
-| **Total** |  | **$50.00** |
+| **Total** |  | **$45.00** |
 
 **Cost Mitigation Strategy**: To stay within this budget, we enforce a `0.70` similarity threshold for all RAG queries. If no relevant campus data is retrieved, the system will return a standard `RETRIEVAL\_FAILED` error rather than incurring LLM generation costs for ungrounded queries.
 

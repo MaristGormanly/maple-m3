@@ -1,13 +1,26 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
-const { chromium } = require('playwright');
+const cheerio = require('cheerio'); 
 const { OpenAI } = require('openai');
 
-// Initialize OpenAI Client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+let embedModel;
+
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  // Point to the DGX Spark via your SSH tunnel
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1', 
+    apiKey: 'ollama', 
+  });
+  embedModel = 'nomic-embed-text'; 
+} else {
+  // Fallback to real OpenAI if needed later 
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small'; 
+}
 
 // Initialize PostgreSQL Client
 const client = new Client({
@@ -18,10 +31,7 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-/**
- * Constants defined in the MAPLE_M3 Project Design Doc
- * Source: marist.edu/student-life/involvement
- */
+// Constants from Spec Document
 const SOURCE_URL = 'https://www.marist.edu/student-life/involvement';
 const SOURCE_TITLE = 'Marist Club Directory';
 const SOURCE_TYPE = 'Clubs';
@@ -44,28 +54,35 @@ function chunkText(text, maxWords = 450, overlapWords = 45) {
 }
 
 async function scrapeAndIngestClubs() {
-  let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Club Directory scrape...');
+    console.log('Connected to database. Starting Club Directory scrape with Cheerio...');
 
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    // Navigate to the club involvement page
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle' });
+    // 1. Fetch the HTML natively
+    const response = await fetch(SOURCE_URL);
+    if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
+    const html = await response.text();
 
-    // Extraction Strategy: Targeting lists of student organizations
-    // per the Data Ingestion & Processing table in the spec.
-    let extractedText = await page.evaluate(() => {
-      // Targets main content or containers likely to hold club lists
-      const clubContent = document.querySelector('.content-area') || 
-                          document.querySelector('#main-content') || 
-                          document.body;
-      
-      // Clean up whitespace and line breaks
-      return clubContent.innerText.replace(/\n\s*\n/g, '\n').trim();
+    // 2. Parse with Cheerio
+    const $ = cheerio.load(html);
+    let extractedText = '';
+
+    // Target headings and paragraphs in the main content area
+    $('#main-content, .content-area, main').find('h2, h3, p, li').each((index, element) => {
+      const text = $(element).text().replace(/\n\s*\n/g, '\n').trim();
+      if (text) {
+        extractedText += text + '\n';
+      }
     });
+
+    // Fallback if specific containers aren't found
+    if (!extractedText.trim()) {
+      console.log('Specific containers not found. Falling back to body parsing...');
+      extractedText = $('body').text().replace(/\n\s*\n/g, '\n').trim();
+    }
+
+    // Clean non-ASCII characters to prevent vector noise
+    extractedText = extractedText.replace(/[^\x00-\x7F]/g, " ");
 
     if (!extractedText) {
       console.error('Failed to extract text from Club Directory.');
@@ -75,19 +92,18 @@ async function scrapeAndIngestClubs() {
     console.log('Successfully extracted club data. Chunking for vectorization...');
 
     const chunks = chunkText(extractedText);
-    console.log(`Created ${chunks.length} chunks. Generating embeddings...`);
+    console.log(`Created ${chunks.length} chunks. Generating OpenAI embeddings...`);
 
+    // 3. Generate Embeddings and Insert
     for (let i = 0; i < chunks.length; i++) {
       const chunkContent = chunks[i];
 
-      // Generate embeddings using text-embedding-3-small as required by spec
       const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small',
+        model: embedModel, 
         input: chunkContent,
       });
       const embeddingVector = embeddingResponse.data[0].embedding;
 
-      // Insert raw content and metadata into Documents table
       const docInsertQuery = `
         INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
         VALUES ($1, $2, $3, $4, $5)
@@ -102,7 +118,6 @@ async function scrapeAndIngestClubs() {
       ]);
       const docId = docResult.rows[0].doc_id;
 
-      // Insert vector representation into DocumentEmbeddings table
       const vectorString = `[${embeddingVector.join(',')}]`;
       const vectorInsertQuery = `
         INSERT INTO DocumentEmbeddings (doc_id, embedding)
@@ -118,7 +133,6 @@ async function scrapeAndIngestClubs() {
   } catch (error) {
     console.error('Error during club scraping/ingestion:', error);
   } finally {
-    if (browser) await browser.close();
     await client.end();
   }
 }

@@ -2,12 +2,25 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
 const { chromium } = require('playwright');
-const { OpenAI } = require('openai'); // Added OpenAI import
+const { OpenAI } = require('openai');
 
-// Initialize OpenAI Client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+let embedModel;
+
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  // Point to the DGX Spark via your SSH tunnel
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1', 
+    apiKey: 'ollama', 
+  });
+  embedModel = 'nomic-embed-text'; 
+} else {
+  // Fallback to real OpenAI if needed later 
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small'; 
+}
 
 // Initialize PostgreSQL Client
 const client = new Client({
@@ -66,9 +79,8 @@ async function scrapeAndIngestServices() {
     for (let i = 0; i < chunks.length; i++) {
       const chunkContent = chunks[i];
 
-      // --- ACTUAL OPENAI API CALL ---
       const embeddingResponse = await openai.embeddings.create({
-        model: 'text-embedding-3-small', //
+        model: embedModel, 
         input: chunkContent,
       });
       const embeddingVector = embeddingResponse.data[0].embedding;

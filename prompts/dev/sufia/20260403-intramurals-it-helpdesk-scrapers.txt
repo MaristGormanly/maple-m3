@@ -1,0 +1,13 @@
+Goal: Create the data ingestion scripts for the Recreation/Intramural schedules (IMLeagues) and the IT Helpdesk FAQs, adhering to the parsing strategies outlined in the project specification.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompts Used:
+1. "Build the recreation/intramural schedule scraping script. Follow the guidelines set in both the specification document and the architecture design document."
+2. "Build the IT Helpdesk scraper next"
+
+Results & Refinements:
+- Intramurals Scraper (Playwright): The AI correctly identified that the IMLeagues target URL is a heavy Single Page Application (SPA). To ensure the dynamic dashboard components loaded before extraction, the AI utilized Playwright to wait for network idle, bypassing the limitations of static HTML parsing.
+- IT Helpdesk Scraper (Cheerio): Based on the spec, the AI used Cheerio to parse the static Helpdesk HTML. It generated a robust extraction strategy designed to target standard `<details>`/`<summary>` accordion tags or Bootstrap-style classes, perfectly mapping the FAQ Questions to their respective Answers.
+- Vectorization: Both scripts were successfully equipped with the OpenAI `text-embedding-3-small` API calls and PostgreSQL insertion queries for the 1536-dimensional vectors and mandatory metadata.
+- Commits Pushed: Created `intramurals.js` and `it-helpdesk.js` inside the `data/scripts/` directory.

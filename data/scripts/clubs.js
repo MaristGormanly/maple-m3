@@ -1,28 +1,20 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
-const cheerio = require('cheerio'); 
+const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
 let openai;
 let embedModel;
 
 if (process.env.USE_LOCAL_MODEL === 'true') {
-  // Point to the DGX Spark via your SSH tunnel
-  openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1', 
-    apiKey: 'ollama', 
-  });
+  openai = new OpenAI({ baseURL: 'http://localhost:11434/v1', apiKey: 'ollama' });
   embedModel = 'nomic-embed-text'; 
 } else {
-  // Fallback to real OpenAI if needed later 
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   embedModel = 'text-embedding-3-small'; 
 }
 
-// Initialize PostgreSQL Client
 const client = new Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -31,108 +23,153 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-// Constants from Spec Document
-const SOURCE_URL = 'https://www.marist.edu/student-life/involvement';
-const SOURCE_TITLE = 'Marist Club Directory';
+const SOURCE_URL = 'https://www.marist.edu/clubs';
+const SOURCE_TITLE = 'Marist Student Organizations Directory';
 const SOURCE_TYPE = 'Clubs';
 
-/**
- * Chunking Strategy: 500-token chunks with 10% overlap 
- * for text-heavy sources as per spec.
- */
-function chunkText(text, maxWords = 450, overlapWords = 45) {
-  const words = text.split(/\s+/);
-  const chunks = [];
-  let i = 0;
-  
-  while (i < words.length) {
-    const chunk = words.slice(i, i + maxWords).join(' ');
-    chunks.push(chunk);
-    i += maxWords - overlapWords;
-  }
-  return chunks;
-}
-
 async function scrapeAndIngestClubs() {
+  let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Club Directory scrape with Cheerio...');
+    console.log('Connected to database. Finding clubs by category headers...');
 
-    // 1. Fetch the HTML natively
-    const response = await fetch(SOURCE_URL);
-    if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
-    const html = await response.text();
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const listPage = await context.newPage();
 
-    // 2. Parse with Cheerio
-    const $ = cheerio.load(html);
-    let extractedText = '';
+    await listPage.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: 60000 });
 
-    // Target headings and paragraphs in the main content area
-    $('#main-content, .content-area, main').find('h2, h3, p, li').each((index, element) => {
-      const text = $(element).text().replace(/\n\s*\n/g, '\n').trim();
-      if (text) {
-        extractedText += text + '\n';
-      }
+    const clubData = await listPage.evaluate(() => {
+      const results = [];
+      const allHeaders = Array.from(document.querySelectorAll('h2'));
+      const mainHeader = allHeaders.find(h => h.innerText.includes('Clubs and Organizations:'));
+      
+      if (!mainHeader) return [];
+
+      const container = mainHeader.closest('section') || mainHeader.parentElement;
+      const categories = Array.from(container.querySelectorAll('h3'));
+
+      categories.forEach(catHeader => {
+        const categoryName = catHeader.innerText.trim();
+        const list = catHeader.nextElementSibling;
+        
+        if (list && list.tagName === 'UL') {
+          const clubItems = Array.from(list.querySelectorAll('li'));
+          clubItems.forEach(li => {
+            const link = li.querySelector('a');
+            results.push({
+              name: li.innerText.trim(),
+              category: categoryName,
+              url: link ? link.href : null
+            });
+          });
+        }
+      });
+      return results;
     });
 
-    // Fallback if specific containers aren't found
-    if (!extractedText.trim()) {
-      console.log('Specific containers not found. Falling back to body parsing...');
-      extractedText = $('body').text().replace(/\n\s*\n/g, '\n').trim();
-    }
-
-    // Clean non-ASCII characters to prevent vector noise
-    extractedText = extractedText.replace(/[^\x00-\x7F]/g, " ");
-
-    if (!extractedText) {
-      console.error('Failed to extract text from Club Directory.');
+    if (clubData.length === 0) {
+      console.log('Zero clubs found. Check if the "Clubs and Organizations:" header exists.');
       return;
     }
 
-    console.log('Successfully extracted club data. Chunking for vectorization...');
+    console.log(`Successfully identified ${clubData.length} clubs. Starting precision crawl...`);
 
-    const chunks = chunkText(extractedText);
-    console.log(`Created ${chunks.length} chunks. Generating OpenAI embeddings...`);
+    for (let i = 0; i < clubData.length; i++) {
+      const club = clubData[i];
+      let clubText = "Status: This club exists but has no additional info page.";
 
-    // 3. Generate Embeddings and Insert
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = chunks[i];
+      if (club.url && !club.url.includes('mailto:')) {
+        const detailPage = await context.newPage();
+        try {
+          console.log(`[Deep Crawl] Visiting: ${club.name}...`);
+          await detailPage.goto(club.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          
+          clubText = await detailPage.evaluate(() => {
+            // 1. Remove navigation and footer to prevent "Mega Menu" scraping
+            const bloat = [
+                '#mobile-header-navigation', 
+                '#header-navigation-bar', 
+                'footer', 
+                'header',
+                '.navbar',
+                '#scrape-alert',
+                '.sr-only'
+            ];
+            bloat.forEach(selector => {
+                document.querySelectorAll(selector).forEach(el => el.remove());
+            });
 
-      const embeddingResponse = await openai.embeddings.create({
-        model: embedModel, 
-        input: chunkContent,
-      });
-      const embeddingVector = embeddingResponse.data[0].embedding;
+            // 2. Target the specific content areas (In Ultimate Frisbee, it's .basic-text)
+            // We look for sections that aren't navigation
+            const contentFragments = Array.from(document.querySelectorAll('section.basic-text, .journal-content-article, #main-content'));
+            
+            if (contentFragments.length > 0) {
+                // Combine the text of all relevant sections
+                return contentFragments.map(f => f.innerText).join('\n').trim();
+            }
+            
+            return document.body.innerText.trim();
+          });
 
-      const docInsertQuery = `
-        INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING doc_id;
-      `;
-      const docResult = await client.query(docInsertQuery, [
-        SOURCE_TITLE,
-        SOURCE_URL,
-        SOURCE_TYPE,
-        i,
-        chunkContent
-      ]);
-      const docId = docResult.rows[0].doc_id;
+          // Limit length to avoid massive token overhead from stray HTML
+          clubText = clubText.substring(0, 3000);
 
-      const vectorString = `[${embeddingVector.join(',')}]`;
-      const vectorInsertQuery = `
-        INSERT INTO DocumentEmbeddings (doc_id, embedding)
-        VALUES ($1, $2);
-      `;
-      await client.query(vectorInsertQuery, [docId, vectorString]);
+        } catch (e) {
+          clubText = "Status: Link exists but content could not be reached.";
+        } finally {
+          await detailPage.close();
+        }
+      }
 
-      console.log(`Inserted club chunk ${i + 1}/${chunks.length} into vector database.`);
+      const finalContent = `Club Name: ${club.name}\nCategory: ${club.category}\nInfo: ${clubText}\nSource: ${club.url || SOURCE_URL}`;
+      
+      // COLLAPSE WHITESPACE: Converts massive indentation/newlines into a clean string
+      const cleanContent = finalContent.replace(/[^\x00-\x7F]/g, " ").replace(/\s+/g, ' ').trim();
+
+      try {
+        const embeddingResponse = await openai.embeddings.create({
+          model: embedModel, 
+          input: cleanContent,
+        });
+        const embeddingVector = embeddingResponse.data[0].embedding;
+
+        // 4. Insert into Documents Table
+        const docInsertQuery = `
+          INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING doc_id;
+        `;
+        const docResult = await client.query(docInsertQuery, [
+          SOURCE_TITLE,
+          club.url || SOURCE_URL,
+          SOURCE_TYPE,
+          i,
+          cleanContent
+        ]);
+        const docId = docResult.rows[0].doc_id;
+
+        // 5. Insert into DocumentEmbeddings Table
+        const vectorString = `[${embeddingVector.join(',')}]`;
+        const vectorInsertQuery = `
+          INSERT INTO DocumentEmbeddings (doc_id, embedding)
+          VALUES ($1, $2);
+        `;
+        await client.query(vectorInsertQuery, [docId, vectorString]);
+
+        console.log(`Successfully ingested: ${club.name}`);
+
+      } catch (dbErr) {
+        console.error(`DB Error on ${club.name}:`, dbErr.message);
+      }
     }
 
     console.log('Club Directory ingestion complete!');
 
   } catch (error) {
-    console.error('Error during club scraping/ingestion:', error);
+    console.error('Fatal Error:', error);
   } finally {
+    if (browser) await browser.close();
     await client.end();
   }
 }

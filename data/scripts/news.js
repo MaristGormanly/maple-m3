@@ -28,60 +28,107 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-const SOURCE_URL = 'https://www.maristcircle.com/home';
-const SOURCE_TITLE = 'Marist Circle — Campus News';
+const SECTIONS = [
+  {
+    url: 'https://www.maristcircle.com/home',
+    sourceTitle: 'Marist Circle — Campus News',
+    sectionLabel: 'Campus News',
+  },
+  {
+    url: 'https://www.maristcircle.com/features',
+    sourceTitle: 'Marist Circle — Features',
+    sectionLabel: 'Features',
+  },
+  {
+    url: 'https://www.maristcircle.com/opinion',
+    sourceTitle: 'Marist Circle — Opinion',
+    sectionLabel: 'Opinion',
+  },
+  {
+    url: 'https://www.maristcircle.com/arts-entertainment',
+    sourceTitle: 'Marist Circle — Arts & Culture',
+    sectionLabel: 'Arts & Culture',
+  },
+];
+
 const SOURCE_TYPE = 'News';
 
 const GOTO_TIMEOUT_MS = 60_000;
 
+async function extractBlogListArticles(page) {
+  await page.waitForSelector('article.BlogList-item', { timeout: 15000 });
+  return page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('article.BlogList-item'));
+    return items
+      .map(item => {
+        const titleEl = item.querySelector('a.BlogList-item-title');
+        const authorEl = item.querySelector('a.Blog-meta-item--author');
+        const dateEl = item.querySelector('time.Blog-meta-item--date');
+        const iso = dateEl?.getAttribute('datetime')?.trim() || null;
+        const dateText = dateEl?.innerText.trim() || null;
+        return {
+          article_title: titleEl ? titleEl.innerText.trim() : null,
+          author: authorEl ? authorEl.innerText.trim() : null,
+          date: iso || dateText,
+          article_url: titleEl ? titleEl.href : null,
+        };
+      })
+      .filter(a => a.article_title);
+  });
+}
+
 async function scrapeAndIngestNews() {
   let browser;
+  let page;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Marist Circle campus news scrape with Playwright...');
+    console.log('Connected to database. Starting Marist Circle multi-section scrape with Playwright...');
 
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page = await context.newPage();
+    page = await context.newPage();
 
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
-    await page.waitForSelector('article.BlogList-item', { timeout: 15000 });
+    const allArticles = [];
 
-    const articles = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('article.BlogList-item'));
-      return items
-        .map(item => {
-          const titleEl = item.querySelector('a.BlogList-item-title');
-          const authorEl = item.querySelector('a.Blog-meta-item--author');
-          const dateEl = item.querySelector('time.Blog-meta-item--date');
-          const iso = dateEl?.getAttribute('datetime')?.trim() || null;
-          const dateText = dateEl?.innerText.trim() || null;
-          return {
-            article_title: titleEl ? titleEl.innerText.trim() : null,
-            author: authorEl ? authorEl.innerText.trim() : null,
-            date: iso || dateText,
-            article_url: titleEl ? titleEl.href : null,
-          };
-        })
-        .filter(a => a.article_title);
-    });
+    for (const section of SECTIONS) {
+      try {
+        await page.goto(section.url, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
+        const items = await extractBlogListArticles(page);
+        if (items.length === 0) {
+          console.warn(`Section returned 0 articles: ${section.sectionLabel} (${section.url})`);
+        } else {
+          console.log(`Section "${section.sectionLabel}": ${items.length} articles`);
+        }
+        for (const item of items) {
+          allArticles.push({
+            ...item,
+            listUrl: section.url,
+            sourceTitle: section.sourceTitle,
+            sectionLabel: section.sectionLabel,
+          });
+        }
+      } catch (sectionErr) {
+        console.warn(
+          `Could not scrape section ${section.sectionLabel} (${section.url}): ${sectionErr.message}`
+        );
+      }
+    }
 
-    await page.close();
-
-    if (articles.length === 0) {
-      console.log('No campus news articles could be extracted from the page.');
+    if (allArticles.length === 0) {
+      console.log('No articles could be extracted from any section.');
       return;
     }
 
-    console.log(`Successfully extracted ${articles.length} articles. Generating embeddings...`);
+    console.log(`Total ${allArticles.length} articles across all sections. Generating embeddings...`);
 
-    for (let i = 0; i < articles.length; i++) {
-      const article = articles[i];
+    for (let i = 0; i < allArticles.length; i++) {
+      const article = allArticles[i];
       const chunkContent = [
+        `section: ${article.sectionLabel}`,
         `article_title: ${article.article_title}`,
         `author: ${article.author ?? 'N/A'}`,
         `date: ${article.date ?? 'N/A'}`,
-        `url: ${article.article_url ?? SOURCE_URL}`,
+        `url: ${article.article_url ?? article.listUrl}`,
       ].join('\n');
 
       try {
@@ -97,8 +144,8 @@ async function scrapeAndIngestNews() {
           RETURNING doc_id;
         `;
         const docResult = await client.query(docInsertQuery, [
-          SOURCE_TITLE,
-          article.article_url || SOURCE_URL,
+          article.sourceTitle,
+          article.article_url || article.listUrl,
           SOURCE_TYPE,
           i,
           chunkContent,
@@ -111,7 +158,7 @@ async function scrapeAndIngestNews() {
         `;
         await client.query(vectorInsertQuery, [docId, `[${embeddingVector.join(',')}]`]);
 
-        console.log(`Inserted chunk ${i + 1}/${articles.length} into vector database.`);
+        console.log(`Inserted chunk ${i + 1}/${allArticles.length} into vector database.`);
       } catch (innerError) {
         console.error(`Failed to ingest article: ${article.article_title}`, innerError.message);
       }
@@ -121,6 +168,7 @@ async function scrapeAndIngestNews() {
   } catch (error) {
     console.error('Error during scraping/ingestion:', error);
   } finally {
+    if (page) await page.close().catch(() => {});
     if (browser) await browser.close();
     await client.end();
   }

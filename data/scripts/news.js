@@ -8,18 +8,16 @@ let openai;
 let embedModel;
 
 if (process.env.USE_LOCAL_MODEL === 'true') {
-  // Point to the DGX Spark via your SSH tunnel
   openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1', 
-    apiKey: 'ollama', 
+    baseURL: 'http://localhost:11434/v1',
+    apiKey: 'ollama',
   });
-  embedModel = 'nomic-embed-text'; 
+  embedModel = 'nomic-embed-text';
 } else {
-  // Fallback to real OpenAI if needed later 
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
-  embedModel = 'text-embedding-3-small'; 
+  embedModel = 'text-embedding-3-small';
 }
 
 const client = new Client({
@@ -30,61 +28,69 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-const SOURCE_URL = 'https://www.marist.edu/daily-events';
-const SOURCE_TITLE = 'Marist Daily News & Events';
+const SOURCE_URL = 'https://www.maristcircle.com/home';
+const SOURCE_TITLE = 'Marist Circle — Campus News';
 const SOURCE_TYPE = 'News';
+
+const GOTO_TIMEOUT_MS = 60_000;
 
 async function scrapeAndIngestNews() {
   let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Marist News scrape with Playwright...');
+    console.log('Connected to database. Starting Marist Circle campus news scrape with Playwright...');
 
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    
-    // Navigate and wait for the Vue.js app to finish loading the dynamic content
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle' });
-    await page.waitForSelector('.singleday-events', { timeout: 15000 });
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
 
-    // 1. Extract the dynamically rendered content from the Vue template
+    await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
+    await page.waitForSelector('article.BlogList-item', { timeout: 15000 });
+
     const articles = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.singleday-events .container'));
-      return items.map(item => {
-        const titleEl = item.querySelector('.title h3');
-        const descEl = item.querySelector('.description');
-        const timeEl = item.querySelector('.startTime');
-        const locEl = item.querySelector('.location');
-
-        return {
-          title: titleEl ? titleEl.innerText.trim() : null,
-          content: descEl ? descEl.innerText.trim() : '',
-          metadata: `Time: ${timeEl ? timeEl.innerText.trim() : 'N/A'} | Location: ${locEl ? locEl.innerText.trim() : 'N/A'}`
-        };
-      }).filter(a => a.title);
+      const items = Array.from(document.querySelectorAll('article.BlogList-item'));
+      return items
+        .map(item => {
+          const titleEl = item.querySelector('a.BlogList-item-title');
+          const authorEl = item.querySelector('a.Blog-meta-item--author');
+          const dateEl = item.querySelector('time.Blog-meta-item--date');
+          const iso = dateEl?.getAttribute('datetime')?.trim() || null;
+          const dateText = dateEl?.innerText.trim() || null;
+          return {
+            article_title: titleEl ? titleEl.innerText.trim() : null,
+            author: authorEl ? authorEl.innerText.trim() : null,
+            date: iso || dateText,
+            article_url: titleEl ? titleEl.href : null,
+          };
+        })
+        .filter(a => a.article_title);
     });
 
+    await page.close();
+
     if (articles.length === 0) {
-      console.log('No news articles could be extracted from the rendered page.');
+      console.log('No campus news articles could be extracted from the page.');
       return;
     }
 
-    console.log(`Successfully extracted ${articles.length} news items. Generating embeddings...`);
+    console.log(`Successfully extracted ${articles.length} articles. Generating embeddings...`);
 
-    // 2. Process and Ingest
     for (let i = 0; i < articles.length; i++) {
       const article = articles[i];
-      const chunkContent = `Headline: ${article.title}\nDetails: ${article.metadata}\n\nSummary: ${article.content}`;
+      const chunkContent = [
+        `article_title: ${article.article_title}`,
+        `author: ${article.author ?? 'N/A'}`,
+        `date: ${article.date ?? 'N/A'}`,
+        `url: ${article.article_url ?? SOURCE_URL}`,
+      ].join('\n');
 
       try {
-      
         const embeddingResponse = await openai.embeddings.create({
-          model: embedModel, 
+          model: embedModel,
           input: chunkContent,
         });
         const embeddingVector = embeddingResponse.data[0].embedding;
 
-        // Insert into Documents Table
         const docInsertQuery = `
           INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
           VALUES ($1, $2, $3, $4, $5)
@@ -92,14 +98,13 @@ async function scrapeAndIngestNews() {
         `;
         const docResult = await client.query(docInsertQuery, [
           SOURCE_TITLE,
-          SOURCE_URL,
+          article.article_url || SOURCE_URL,
           SOURCE_TYPE,
           i,
-          chunkContent
+          chunkContent,
         ]);
         const docId = docResult.rows[0].doc_id;
 
-        // Insert into DocumentEmbeddings Table
         const vectorInsertQuery = `
           INSERT INTO DocumentEmbeddings (doc_id, embedding)
           VALUES ($1, $2);
@@ -107,14 +112,12 @@ async function scrapeAndIngestNews() {
         await client.query(vectorInsertQuery, [docId, `[${embeddingVector.join(',')}]`]);
 
         console.log(`Inserted chunk ${i + 1}/${articles.length} into vector database.`);
-
       } catch (innerError) {
-        console.error(`Failed to ingest news item: ${article.title}`, innerError.message);
+        console.error(`Failed to ingest article: ${article.article_title}`, innerError.message);
       }
     }
 
-    console.log('Marist News ingestion complete!');
-
+    console.log('Marist Circle news ingestion complete!');
   } catch (error) {
     console.error('Error during scraping/ingestion:', error);
   } finally {

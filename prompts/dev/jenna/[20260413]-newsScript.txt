@@ -1,0 +1,3 @@
+@docs/MAPLE_M3 Project Design Doc.md I want to create a scraper in @data/scripts/news.js that scrapes 
+this webpage for the article_title, author, and date. Use @data/scripts/admin-directory.js as a guide to 
+create the script. Use https://www.maristcircle.com/home instead of the link described in the design doc. 

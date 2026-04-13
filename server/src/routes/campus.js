@@ -6,42 +6,47 @@ const { handleChat } = require('../controllers/chat');
 const { apiLimiter } = require('../middleware/security');
 const retrievalService = require('../services/retrieval');
 
+function mapEventDocumentRow(row) {
+  const content = row.content || '';
+  const titleMatch = content.match(/^Event:\s*(.+)$/m);
+  const locationMatch = content.match(/^Location:\s*(.+)$/m);
+  return {
+    title: titleMatch ? titleMatch[1].trim() : row.source_title,
+    location: locationMatch ? locationMatch[1].trim() : null,
+    start_time: row.last_updated,
+    category: 'Events',
+  };
+}
+
 router.post('/chat', apiLimiter, handleChat);
 
-// Fetch actual upcoming events from the database
+// Event chunks from Documents (ingested by campus-events script; source_type = Events)
 router.get('/status', async (req, res) => {
   const timestamp = new Date().toISOString();
   try {
-    const { date } = req.query; // e.g., ?date=2026-04-15
+    const { date } = req.query; // filters by ingest date (last_updated), e.g. ?date=2026-04-15
     const pool = retrievalService.getDbPool();
-    
-    let queryText = '';
-    let queryParams = [];
 
-    // Support ?date= filtering per Design Doc
+    let queryText = `
+      SELECT source_title, source_url, chunk_index, content, last_updated
+      FROM Documents
+      WHERE source_type = 'Events'
+    `;
+    const queryParams = [];
+
     if (date) {
-      queryText = `
-        SELECT title, location, start_time, category 
-        FROM CampusEvents 
-        WHERE DATE(start_time) = $1::date
-        ORDER BY start_time ASC;
-      `;
+      queryText += ` AND DATE(last_updated) = $1::date`;
       queryParams.push(date);
-    } else {
-      queryText = `
-        SELECT title, location, start_time, category 
-        FROM CampusEvents 
-        WHERE start_time >= NOW() 
-        ORDER BY start_time ASC 
-        LIMIT 10;
-      `;
     }
 
+    queryText += ` ORDER BY last_updated DESC, chunk_index ASC LIMIT 50`;
+
     const result = await pool.query(queryText, queryParams);
+    const data = result.rows.map(mapEventDocumentRow);
 
     res.status(200).json({
       success: true,
-      data: result.rows,
+      data,
       error: null,
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });

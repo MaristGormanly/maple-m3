@@ -24,7 +24,7 @@ async function initializeDatabase() {
     // Explicit RESET_DB environment variable handling to rebuild schema
     if (process.env.RESET_DB === 'true') {
       console.log('RESET_DB is true. Dropping existing tables to rebuild schema...');
-      await client.query('DROP TABLE IF EXISTS ChatHistory, DocumentEmbeddings, Documents, CampusEvents, Users CASCADE;');
+      await client.query('DROP TABLE IF EXISTS ChatHistory, DocumentEmbeddings, Documents, Users CASCADE;');
     }
 
     await client.query(`
@@ -33,17 +33,6 @@ async function initializeDatabase() {
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
         major VARCHAR(255)
-      );
-    `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS CampusEvents (
-        event_id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        description TEXT,
-        location VARCHAR(255),
-        start_time TIMESTAMP NOT NULL,
-        category VARCHAR(100)
       );
     `);
 

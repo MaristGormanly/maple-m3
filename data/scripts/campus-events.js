@@ -88,14 +88,6 @@ async function scrapeAndIngestEvents() {
       const chunkContent = `Event: ${event.title}\nTime: ${event.timeStr}\nLocation: ${event.location}\nDescription: ${event.description}`;
 
       try {
-        // 1. Relational Insert
-        const eventInsertQuery = `
-          INSERT INTO CampusEvents (title, description, location, start_time, category)
-          VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4);
-        `;
-        await client.query(eventInsertQuery, [event.title, event.description, event.location, SOURCE_TYPE]);
-
-        // 2. Vector Ingestion
         const embeddingResponse = await openai.embeddings.create({
           model: embedModel, 
           input: chunkContent,

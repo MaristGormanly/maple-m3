@@ -143,10 +143,7 @@ All endpoints adhere to the MAPLE base URL pattern `/api/v1/[module-prefix]/[res
 
 - Users (students)  
   - Attributes: `student\_id` (PK), `name`, `email`, `major`  
-  - Purpose: Persists student profiles to personalize the Student UI experience  
-- CampusEvents  
-  - Attributes: `event\_id` (PK), `title`, `description`, `location`, `start\_time`, `category`  
-  - Purpose: Provides data source for Status/Events Controller
+  - Purpose: Persists student profiles to personalize the Student UI experience
 
 **Knowledge Base & Vector Entities (Unstructured Data)**
 
@@ -173,15 +170,15 @@ All endpoints adhere to the MAPLE base URL pattern `/api/v1/[module-prefix]/[res
 
 **Required Information**
 
-- Dining Services  
-- Library resources  
 - Health and wellness  
-- Recreation facilities  
-- IT support  
+- Recreation facilities (gym and pool) 
+- IT help desk FAQs  
 - Administrative offices  
-- Student clubs and organizations  
+- Student Clubs and Organizations  
 - Campus events  
-- University news
+- University news (Marist Circle)
+- Library resources  
+- Dining Services 
 
 ## Data Sources
 
@@ -206,19 +203,19 @@ Library student services:
 [https://www.marist.edu/student-life/services/health-services](https://www.marist.edu/student-life/services/health-services) 
 
 **IT help desk:**  
-[https://www.marist.edu/helpdesk](https://www.marist.edu/helpdesk) 
+[https://teamdynamix.marist.edu/TDClient/92/Portal/KB/](https://teamdynamix.marist.edu/TDClient/92/Portal/KB/) 
 
 **Admin Directory:**  
 [https://www.marist.edu/directory](https://www.marist.edu/directory) 
 
 **Club Directory:**  
-[https://www.marist.edu/student-life/involvement](https://www.marist.edu/student-life/involvement) 
+[https://www.marist.edu/clubs](https://www.marist.edu/clubs) 
 
 **Campus Event Calendar:**  
-[https://www.marist.edu/events](https://www.marist.edu/events) 
+[https://www.marist.edu/daily-events](https://www.marist.edu/daily-events) 
 
 **Marist News Feed:**  
-[https://www.marist.edu/news](https://www.marist.edu/news) 
+[https://www.maristcircle.com/](https://www.maristcircle.com/) 
 
 ## Data Ingestion & Processing
 
@@ -234,12 +231,13 @@ Raw data will be transformed into structured JSON records before vectorization t
 | :---- | :---- | :---- | :---- |
 | Dining | [dineoncampus.com/marist/](http://dineoncampus.com/marist/)  | **Playwright:** Automate navigation through the date picker. Intercept the JSON API responses directly from the site's backend to avoid messy HTML parsing of menus. | `item_name`, `meal_period`, `allergens`, `calories` |
 | Library | [library.marist.edu/hours-full](http://library.marist.edu/hours-full)  | **Cheerio/Playwright:** Target the `<table>` element with the ID or class containing "hours." Parse row by row to map "Building Area" to "Time Range". | `area_name`, `date`, `open_time`, `close_time` |
-| Events | [marist.edu/daily-events](http://marist.edu/daily-events)  | **Playwright/Cheerio:** This page uses a **Localist** calendar structure. Target the list items (`.event-card`) to extract title, time, and location. | `event_title`, `start_time`, `location`, `description` |
-| IT/FAQ | [marist.edu/helpdesk](http://marist.edu/helpdesk)  | **Cheerio:** Extract data from the accordion components. Map the "Question" (accordion header) to the "Answer" (hidden panel text). | `category`, `question`, `answer_text` |
-| Admin | [marist.edu/directory](http://marist.edu/directory)  | **Note:** Most directory searches are behind a form. **Playwright** to input "Department" names and scrape the resulting contact cards. | `department`, `office_location`, `email`, `phone` |
-| Rec/Pool | [https://goredfoxes.com/sports/2011/10/3/205308200.aspx](https://goredfoxes.com/sports/2011/10/3/205308200.aspx)  | **Cheerio:** This site often uses static tables for facility hours. Clean the text to remove non-ASCII characters that sometimes appear in schedule grids. | `facility_name`, `hours`  |
-| Club Directory | [marist.edu/student-life/involvement](http://marist.edu/student-life/involvement)  | **Cheerio**: Scrapes the static list of student organizations and their mission statements/contact emails. | `org_name`, `description`, `category`, `contact_info` |
+| Events | [marist.edu/daily-events](http://marist.edu/daily-events)  | **Playwright:** | `event`, `Time`, `Location`, `description` |
+| IT/FAQ | [teamdynamixmarist.edu](https://teamdynamix.marist.edu/TDClient/92/Portal/Home/)  | **Cheerio:** Extract data from the accordion components. Map the "Question" (accordion header) to the "Answer" (hidden panel text). | `category`, `question`, `answer_text` |
+| Admin | [marist.edu/directory](http://marist.edu/directory)  | **Note:** Most directory searches are behind a form. **Playwright** to input "Department" names and scrape the resulting contact cards. | `department`, `url`, `phone`, `location`, `email` |
+| Gym/Pool | [https://goredfoxes.com/sports/2011/10/3/205308200.aspx](https://goredfoxes.com/sports/2011/10/3/205308200.aspx)  | **Cheerio:** This site often uses static tables for facility hours. Clean the text to remove non-ASCII characters that sometimes appear in schedule grids. | `facility_name`, `hours`  |
+| Club Directory | [marist.edu/clubs](https://www.marist.edu/clubs)  | **Cheerio**: Scrapes the static list of student organizations and their mission statements/contact emails. | `org_name`, `description`, `category`, `contact_info` |
 | Intramurals  | [https://www.imleagues.com/spa/intramural/d18b10c460134db3af098b83375dac71/home](https://www.imleagues.com/spa/intramural/d18b10c460134db3af098b83375dac71/home)  | **Playwright**: Necessary for navigating the authenticated-style dashboard to scrape game schedules and registration deadlines. | `activity_type`, `registration_deadline`, `game_schedule`  |
+| Campus News  | [https://www.maristcircle.com/](https://www.maristcircle.com/)  | **Playwright** | `article_title`, `author`, `date`, `url` |
 
 ## Data Freshness
 
@@ -247,7 +245,7 @@ Raw data will be transformed into structured JSON records before vectorization t
 
 **Daily:**
 
-- Dining Hours/Menus (Hours vary around breaks and also weather).  
+- Dining Hours/Menus  
 - Campus Events
 
 **By Semester:**

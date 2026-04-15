@@ -6,13 +6,14 @@ const { handleChat } = require('../controllers/chat');
 const { apiLimiter } = require('../middleware/security');
 const retrievalService = require('../services/retrieval');
 
+// Helper to extract structured event data from the raw scraped text chunks
 function mapEventDocumentRow(row) {
   const content = row.content || '';
   const titleMatch = content.match(/^Event:\s*(.+)$/m);
   const locationMatch = content.match(/^Location:\s*(.+)$/m);
   return {
     title: titleMatch ? titleMatch[1].trim() : row.source_title,
-    location: locationMatch ? locationMatch[1].trim() : null,
+    location: locationMatch ? locationMatch[1].trim() : 'Campus', // Fallback
     start_time: row.last_updated,
     category: 'Events',
   };
@@ -20,33 +21,42 @@ function mapEventDocumentRow(row) {
 
 router.post('/chat', apiLimiter, handleChat);
 
-// Event chunks from Documents (ingested by campus-events script; source_type = Events)
+// Fetch event chunks from Documents (source_type = 'Events')
 router.get('/status', async (req, res) => {
   const timestamp = new Date().toISOString();
   try {
     const { date } = req.query; // filters by ingest date (last_updated), e.g. ?date=2026-04-15
     const pool = retrievalService.getDbPool();
-
-    let queryText = `
-      SELECT source_title, source_url, chunk_index, content, last_updated
-      FROM Documents
-      WHERE source_type = 'Events'
-    `;
-    const queryParams = [];
+    
+    let queryText = '';
+    let queryParams = [];
 
     if (date) {
-      queryText += ` AND DATE(last_updated) = $1::date`;
+      queryText = `
+        SELECT doc_id, source_title, source_url, source_type, last_updated, content
+        FROM Documents
+        WHERE source_type = 'Events' AND DATE(last_updated) = $1::date
+        ORDER BY last_updated DESC
+        LIMIT 10;
+      `;
       queryParams.push(date);
+    } else {
+      queryText = `
+        SELECT doc_id, source_title, source_url, source_type, last_updated, content
+        FROM Documents
+        WHERE source_type = 'Events'
+        ORDER BY last_updated DESC
+        LIMIT 10;
+      `;
     }
 
-    queryText += ` ORDER BY last_updated DESC, chunk_index ASC LIMIT 50`;
-
     const result = await pool.query(queryText, queryParams);
-    const data = result.rows.map(mapEventDocumentRow);
+
+    const formattedEvents = result.rows.map(mapEventDocumentRow);
 
     res.status(200).json({
       success: true,
-      data,
+      data: formattedEvents,
       error: null,
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });

@@ -1,0 +1,70 @@
+<div class="chat-layout">
+    <header class="chat-header">
+      <div class="brand">
+        <h1>🍁 MAPLE</h1>
+        <span>Campus Navigator</span>
+      </div>
+    </header>
+  
+    <main class="chat-window" #scrollMe>
+      <div class="message-wrapper" *ngFor="let msg of messages" [ngClass]="msg.role">
+        
+        <!-- Avatar -->
+        <div class="avatar">
+          {{ msg.role === 'assistant' ? '🤖' : '👤' }}
+        </div>
+  
+        <div class="message-content" [class.error-msg]="msg.isError">
+          
+          <!-- Markdown Rendered Content -->
+          <div class="text" [innerHTML]="msg.content | markdown"></div>
+  
+          <!-- Confidence Badge (Assistant Only) -->
+          <div class="confidence-badge" *ngIf="msg.role === 'assistant' && msg.confidence && !msg.isError" [ngClass]="msg.confidence">
+            <span class="icon" *ngIf="msg.confidence === 'high'">✓</span>
+            <span class="icon" *ngIf="msg.confidence === 'medium'">⚠️</span>
+            <span class="icon" *ngIf="msg.confidence === 'low' || msg.confidence === 'none'">❌</span>
+            {{ msg.confidence | uppercase }} CONFIDENCE
+          </div>
+  
+          <!-- Source Attribution (Assistant Only) -->
+          <div class="sources-list" *ngIf="msg.sources && msg.sources.length > 0">
+            <strong>Sources:</strong>
+            <ul>
+              <li *ngFor="let source of msg.sources">
+                <a [href]="source.url" target="_blank" rel="noopener noreferrer">
+                  {{ source.title }}
+                </a>
+              </li>
+            </ul>
+          </div>
+  
+        </div>
+      </div>
+  
+      <!-- Loading Indicator -->
+      <div class="message-wrapper assistant" *ngIf="isLoading">
+        <div class="avatar">🤖</div>
+        <div class="message-content loading-indicator">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        </div>
+      </div>
+    </main>
+  
+    <footer class="chat-input-area">
+      <div class="input-container">
+        <textarea 
+          [(ngModel)]="userInput" 
+          (keydown)="handleKeydown($event)"
+          placeholder="Ask about dining menus, library hours, or IT help..." 
+          rows="1">
+        </textarea>
+        <button (click)="sendMessage()" [disabled]="isLoading || !userInput.trim()">
+          Send
+        </button>
+      </div>
+      <div class="feedback-link">
+        <a href="#" target="_blank">Give Feedback</a>
+      </div>
+    </footer>
+  </div>

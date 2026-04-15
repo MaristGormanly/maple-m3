@@ -18,11 +18,21 @@ export interface ChatSource {
     details?: string;
   }
   
+  export interface MapleMetadata {
+    timestamp: string;
+    module: string;
+    version: string;
+    model?: string;
+    latency_ms?: number;
+    // Index signature to allow retrieval/LLM specific telemetry
+    [key: string]: any; 
+  }
+  
   export interface MapleResponse {
     success: boolean;
     data: ChatResponseData | null;
     error: MapleError | null;
-    metadata: any;
+    metadata: MapleMetadata; 
   }
   
   export interface ChatMessage {
@@ -30,5 +40,6 @@ export interface ChatSource {
     content: string;
     sources?: ChatSource[];
     confidence?: 'high' | 'medium' | 'low' | 'none';
-    isError?: boolean; // Flags 422 or 502 errors for special UI rendering
+    conversationId?: string;
+    isError?: boolean;
   }

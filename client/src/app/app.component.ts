@@ -10,14 +10,14 @@ import { MarkdownPipe } from './pipes/markdown.pipe';
   standalone: true,
   imports: [CommonModule, FormsModule, MarkdownPipe],
   templateUrl: './app.component.html',
-  styleUrl: ['./app.component.scss']
+  styleUrl: './app.component.scss'
 })
 export class AppComponent implements AfterViewChecked {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
 
   userInput: string = '';
   messages: ChatMessage[] = [
-    { role: 'assistant', content: 'Hello! I am the MAPLE Campus Navigator. Ask me about dining, library hours, IT help, or campus events.' }
+    { role: 'assistant', content: 'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.' }
   ];
   isLoading: boolean = false;
   conversationId: string | null = null;
@@ -42,13 +42,18 @@ export class AppComponent implements AfterViewChecked {
     this.userInput = '';
     this.isLoading = true;
 
-    this.campusApi.sendMessage(userText, this.conversationId).subscribe((responseMsg) => {
-      this.messages.push(responseMsg);
-      // Ensure we keep the conversation ID for the backend history
-      if (!this.conversationId && responseMsg.confidence) {
-         this.conversationId = `conv_${Date.now()}`; // Set locally if backend doesn't return it
+    this.campusApi.sendMessage(userText, this.conversationId).subscribe({
+      next: (responseMsg) => {
+        this.messages.push(responseMsg);
+        if (responseMsg.conversationId) {
+           this.conversationId = responseMsg.conversationId;
+        }
+        this.isLoading = false;
+      },
+      error: (err) => {
+        console.error('Unhandled UI error:', err);
+        this.isLoading = false; 
       }
-      this.isLoading = false;
     });
   }
 

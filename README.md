@@ -91,13 +91,3 @@ AI tools (GitHub Copilot and Gemini) were actively used throughout development.
 *   **Iterative Debugging:** Used to diagnose dependency errors (like missing express-rate-limit packages) and database race conditions.
     
 *   **Prompt Logs:** Full records of our AI-assisted development process can be found in the prompts/dev/ directory.
-    
-
-Team Members
-------------
-
-*   \[Sufia Khan\] - Backend AI Integration
-    
-*   \[Teammate 2\] - Data Ingestion Pipelines
-    
-*   \[Teammate 3\] - Angular Frontend & UI

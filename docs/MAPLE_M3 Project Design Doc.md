@@ -110,6 +110,8 @@ See also **[architecture-diagram.md](./architecture-diagram.md)** for the implem
 
 This architecture handles user interactions and displays responses. It is prohibited from accessing the database directly, and must use the API client service to access the backend first. 
 
+**Lab 2 Implementation Note:** The current prototype frontend is implemented and connected to the backend chat endpoint. The UI renders assistant responses, source links, confidence badges, and preserves multi-turn conversations by passing backend conversation IDs.
+
 #### Backend (Node.js/Express)
 
 This is the “middleman” between the user and the database, serving as the orchestration layer using the required stack.
@@ -566,7 +568,7 @@ We will demonstrate this improvement across three key axes:
 | ----- | ----- |
 | Week 6-8 | Team Declaration, Topic Selection, and Design Doc Assignment |
 | Week 9 | **Milestone 1: Data Ingestion & Database Setup  Deliverable:** A functioning PostgreSQL database with the `pgvector` extension and a Node.js script that successfully embeds and stores initial campus data with all mandatory metadata. |
-| Weeks 10 \- 11 | **Milestone 2: RAG Pipeline & API Integration  Deliverable:** A completed `POST /api/v1//campus/chat` endpoint that uses a centralized LLM wrapper to query frontier model and returns the standardized MAPLE JSON response envelope. |
+| Weeks 10 \- 11 | **Milestone 2: RAG Pipeline & API Integration  Deliverable:** A completed `POST /api/v1/campus/chat` endpoint that uses a centralized LLM wrapper to query frontier model and returns the standardized MAPLE JSON response envelope. |
 | Week 12 | **Milestone 3: Automated QA & Evaluation  Deliverable:** An automated Node.js testing script that runs a "Golden Dataset" of hardcoded queries to verify retrieval accuracy (testing the 0.70 similarity threshold) and answer faithfulness. |
 | Weeks 13 \- 14 | **Milestone 4: UI Connection & Guerrilla Testing  Deliverable:** A functional Angular frontend connected to the RAG backend, validated through rapid 3-minute hallway usability tests with fellow students. |
 | Week 15 | **Final project due** — deployed application with full AI integration |

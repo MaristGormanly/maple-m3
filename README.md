@@ -11,7 +11,7 @@ This module utilizes a Retrieval-Augmented Generation (RAG) pipeline to dynamica
 
 ## Tech Stack
 * **Backend:** Node.js with Express
-* **Frontend:** Angular 19+
+* **Frontend:** Angular 21 (standalone components)
 * **Database:** PostgreSQL with `pgvector` extension
 * **AI Models:** DGX Spark via Ollama (`llama3.1:8b` for generation, `nomic-embed-text` for embeddings)
 * **Data Pipeline:** Playwright, Cheerio
@@ -46,6 +46,14 @@ npm run start
 
 Equivalent: `node src/index.js` from the `server` directory.
 
+### 5. Run the Frontend Client
+```bash
+cd client
+npm install
+npm start
+# Frontend runs on http://localhost:4200
+```
+
 ## Deployment
 
 **Lab 2:** local development only. **Final project:** target deployment is DigitalOcean App Platform with managed PostgreSQL (`pgvector`) and HTTPS (e.g. `m3.maristchat.com`), with secrets in host environment variables—not committed `.env` files.
@@ -57,11 +65,19 @@ Retrieval and answer quality will be measured with a golden-query set (precision
 Current Status (Lab 2 Prototype)
 --------------------------------
 
-*   **Working:** Complete conversational RAG flow (/chat), dynamic system prompt loading, structured JSON logging, temporal metadata pre-filtering, and rate-limiting security middleware.
+*   **Working:** Complete conversational RAG flow (`/chat`), dynamic system prompt loading, structured JSON logging, temporal metadata pre-filtering, rate-limiting security middleware, and a connected Angular chat UI.
     
 *   **Stubbed/Scoped:** The /ingest route currently only triggers the Admin Directory scraping script. This is scoped down for the MVP to safely demonstrate the pipeline hook without overwhelming the server.
     
-*   **Planned:** Full scheduled CRON jobs for high-volatility data ingestion (dining menus) and Angular frontend UI integration.
+*   **Planned:** Full scheduled CRON jobs for high-volatility data ingestion (dining menus).
+
+Frontend Status (Lab 2 Prototype)
+---------------------------------
+
+* **Implemented chat interface:** The frontend now provides a functional student chat UI in `client/src/app/app.component.*`, connected to the backend chat endpoint.
+* **Source attribution and trust signals:** Assistant responses render source links and confidence badges (`high`/`medium`/`low`/`none`) in the UI.
+* **Conversation continuity:** The frontend consumes backend `conversation_id` values to preserve multi-turn context.
+* **Environment-based API config:** API base URLs are externalized in `client/src/environments/environment.ts` and `environment.development.ts`.
     
 
 AI Integration Summary

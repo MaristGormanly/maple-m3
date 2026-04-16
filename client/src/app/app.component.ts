@@ -1,4 +1,4 @@
-import { Component, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
+import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
@@ -22,7 +22,11 @@ export class AppComponent implements AfterViewChecked {
   isLoading: boolean = false;
   conversationId: string | null = null;
 
-  constructor(private campusApi: CampusApiService) {}
+  constructor(
+    private campusApi: CampusApiService,
+    private cdr: ChangeDetectorRef,
+    private zone: NgZone
+  ) {}
 
   ngAfterViewChecked() {
     this.scrollToBottom();
@@ -44,15 +48,21 @@ export class AppComponent implements AfterViewChecked {
 
     this.campusApi.sendMessage(userText, this.conversationId).subscribe({
       next: (responseMsg) => {
-        this.messages.push(responseMsg);
-        if (responseMsg.conversationId) {
-           this.conversationId = responseMsg.conversationId;
-        }
-        this.isLoading = false;
+        this.zone.run(() => {
+          this.messages.push(responseMsg);
+          if (responseMsg.conversationId) {
+            this.conversationId = responseMsg.conversationId;
+          }
+          this.isLoading = false;
+          this.cdr.detectChanges();
+        });
       },
       error: (err) => {
-        console.error('Unhandled UI error:', err);
-        this.isLoading = false; 
+        this.zone.run(() => {
+          console.error('Unhandled UI error:', err);
+          this.isLoading = false;
+          this.cdr.detectChanges();
+        });
       }
     });
   }

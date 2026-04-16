@@ -110,8 +110,6 @@ See also **[architecture-diagram.md](./architecture-diagram.md)** for the implem
 
 This architecture handles user interactions and displays responses. It is prohibited from accessing the database directly, and must use the API client service to access the backend first. 
 
-**Lab 2 Implementation Note:** The current prototype frontend is implemented and connected to the backend chat endpoint. The UI renders assistant responses, source links, confidence badges, and preserves multi-turn conversations by passing backend conversation IDs.
-
 #### Backend (Node.js/Express)
 
 This is the “middleman” between the user and the database, serving as the orchestration layer using the required stack.
@@ -226,7 +224,7 @@ Raw data will be transformed into structured JSON records before vectorization t
 * **Parsing Strategy:** For structured data like menus and office hours, we will use a one-record-per-chunk approach. This ensures that critical metadata, such as allergen labels or contact phone numbers, is never split across different vectors, reducing hallucination risks.  
 * **Chunking Strategy:** For text-heavy sources (IT FAQs and news), we will use 500-token chunks with a 10% overlap to preserve semantic context at the boundaries.  
 * **Vectorization:** All chunks will be embedded using the OpenAI `text-embedding-3-small` model and stored in PostgreSQL with the pgvector extension.  
-* **Similarity Threshold:** We apply a cosine similarity threshold of `0.70`, ensuring that the module acknowledges uncertainty rather than providing irrelevant results. 
+* **Similarity Threshold:** Baseline target is a cosine similarity threshold of `0.70`, ensuring that the module acknowledges uncertainty rather than providing irrelevant results. For the current Lab 2 prototype, this is temporarily tuned to `0.65` to reduce false negatives observed in administrative office queries (for example, Registrar lookups). 
 * **Mandatory Metadata:** Every chunk will include `source\_title`, `source\_url`, `source\_type`, `last\_updated`, and `chunk\_index` to support the required source attribution in the UI.
 
 | Source | URL | Parsing Strategy | Required JSON Fields |
@@ -272,6 +270,8 @@ The MAPLE M3 Campus Services module will utilize a **Retrieval-Augmented Generat
 We chose this approach because our primary challenge is synthesizing highly siloed, static, and semi-static campus information without the hallucination risks inherent to standalone LLMs. We are intentionally avoiding complex agentic workflows and multi-step AI chains. Because student queries generally fall into predictable, distinct domains (e.g., Dining, IT, Library), an agentic approach would introduce unnecessary latency, token costs, and points of failure.
 
 Instead, we will implement Metadata-Based Pre-filtering. User queries will pass through a lightweight keyword classifier to determine the target domain. This classifier will apply a strict filter to the vector database (using PostgreSQL with pgvector) prior to executing the similarity search. This filtering leverages required chunk metadata, such as `source_type` and `source_title`, to ensure the LLM's context window remains highly focused. Furthermore, to guarantee reliability, the system will enforce a strict similarity threshold, ignoring any chunks with a relevance score below `0.70` to prevent hallucinations when no relevant data is found. This design ensures the application remains computationally efficient and factually grounded, perfectly fitting our need for rapid, reliable student support.
+
+**Lab 2 Implementation Note:** The classifier currently includes explicit routing for administrative intent keywords (for example, "registrar", "office", "directory", and "admin") so administrative queries are filtered to the Admin source domain instead of broad all-domain retrieval.
 
 ### Dynamic Data & Multi-Index Architecture 
 
@@ -336,7 +336,7 @@ The system will implement a standardized, multi-index RAG retrieval process desi
 * **Filtering (Metadata Pre-filtering):** Because M3 handles diverse data domains (dining, IT, library), we will apply metadata-based pre-filtering before executing the vector search. Queries will be routed to specific "namespaces" or filtered by `source_type` to ensure a query about "printing hours" doesn't retrieve dining hall menus.  
 * **Chunk Metadata:** All ingested documents will be chunked and stored with mandatory metadata, including `source_title`, `source_url`, `source_type`, `last_updated`, and `chunk_index`.  
 * **Top-K Retrieval:** The vector search will retrieve exactly the top 5 most relevant chunks to construct the LLM context window.  
-* **Handling Retrieval Failures (Thresholds):** The system will strictly enforce a `0.70` similarity threshold. If the vector search returns 0 chunks meeting this threshold, the system assumes no relevant information exists in the knowledge base. It will bypass the LLM generation step and immediately return a standard "information not found" error code (`RETRIEVAL_FAILED`) to prevent hallucinations.  
+* **Handling Retrieval Failures (Thresholds):** The design baseline is a strict `0.70` similarity threshold. For Lab 2 prototype behavior, retrieval is tuned to `0.65` and still follows the same failure policy: if the vector search returns 0 chunks meeting threshold, the system assumes no relevant information exists in the knowledge base, bypasses LLM generation, and returns `RETRIEVAL_FAILED` to prevent hallucinations.  
 * **Handling Conflicting Results:** Because our data sources have vastly different update frequencies (e.g., daily menus vs. semesterly schedules), the retrieval pipeline may occasionally pull conflicting chunks. To handle this, the system prompt will instruct the LLM to prioritize the chunk with the most recent `last_updated` metadata timestamp when synthesizing its answer.
 
 ## Output Design
@@ -365,6 +365,7 @@ To prevent inaccurate campus information from reaching the user, the module will
 * **Centralized LLM Wrapper:** All API calls to the model will be routed through a single `services/llm.js` utility. This service wrapper will enforce a hard 30-second timeout on all standard LLM requests and implement exponential backoff for transient network failures.  
 * **Prompt Injection Mitigation:** System prompts will be strictly isolated from user input within the API payload to prevent malicious overrides of the system persona or routing instructions.  
 * **Handling Unknowns:** If the vector database cannot find relevant context for a query, we do not let the model guess. The system enforces a strict similarity threshold, meaning it will not return chunks below a relevance score of `0.70`. If no chunks meet this threshold, the module will acknowledge uncertainty rather than hallucinate. In this scenario, the API will also pass a `confidence` flag set to `"none"`, allowing the UI to display appropriate caveats to the student.  
+* **Lab 2 Threshold Deviation:** To support MVP reliability during prototype testing, the current implementation uses `0.65` as the active threshold and documents this as a temporary calibration to reduce false negatives on valid campus-office queries.  
 * **Domain-Specific Hallucination Risk (Data Freshness):** In the M3 domain, the highest hallucination risk comes from dynamic data, because dining menus change daily, library hours change by semester, and event calendars update frequently. To prevent the AI from confidently providing outdated information, the system relies on the chunk metadata. The LLM is instructed to evaluate the `last\_updated` timestamp of the retrieved chunks against the current system time. If the retrieved schedule is outdated, the model is instructed to warn the user that the information may not be current.
 
 # **Evaluation Plan**

@@ -66,7 +66,7 @@ const handleChat = async (req, res) => {
         error: {
           code: 'RETRIEVAL_FAILED',
           message: 'Unable to find relevant information for your query.',
-          details: 'No chunks exceeded the similarity threshold of 0.70.'
+          details: 'No chunks exceeded the similarity threshold of 0.65.'
         },
         metadata: {
           timestamp,

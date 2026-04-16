@@ -41,7 +41,7 @@ const retrievalService = {
   getDbPool: () => dbPool, // Export the pool
 
   async search(query, domainFilter = null, conversationId = 'unknown') {
-    const SIMILARITY_THRESHOLD = 0.70;
+    const SIMILARITY_THRESHOLD = 0.65;
     const TOP_K = 5;
 
     try {

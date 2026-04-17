@@ -1,28 +1,21 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
-const { chromium } = require('playwright'); // Swapping Cheerio out for Playwright
+const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
-let openai;
-let embedModel;
+/**
+ * MAPLE M3 Configuration
+ * Supports local DGX Spark (Ollama) or OpenAI frontier models
+ */
+const USE_LOCAL = process.env.USE_LOCAL_MODEL === 'true';
+const openai = new OpenAI({
+  baseURL: USE_LOCAL ? 'http://localhost:11434/v1' : undefined,
+  apiKey: USE_LOCAL ? 'ollama' : process.env.OPENAI_API_KEY,
+});
 
-if (process.env.USE_LOCAL_MODEL === 'true') {
-  // Point to the DGX Spark via your SSH tunnel
-  openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1', 
-    apiKey: 'ollama', 
-  });
-  embedModel = 'nomic-embed-text'; 
-} else {
-  // Fallback to real OpenAI if needed later 
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-  embedModel = 'text-embedding-3-small'; 
-}
+const embedModel = USE_LOCAL ? 'nomic-embed-text' : 'text-embedding-3-small';
 
-// Initialize PostgreSQL Client
 const client = new Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -31,100 +24,104 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-// Constants from Spec Document
 const SOURCE_URL = 'https://library.marist.edu/web/marist-library/hours-full';
-const SOURCE_TITLE = 'Cannavino Library Hours & Services';
+const SOURCE_TITLE = 'Marist Library Hours';
 const SOURCE_TYPE = 'Library';
 
-function chunkText(text, maxWords = 400, overlapWords = 40) {
-  const words = text.split(/\s+/);
-  const chunks = [];
-  let i = 0;
-  
-  while (i < words.length) {
-    const chunk = words.slice(i, i + maxWords).join(' ');
-    chunks.push(chunk);
-    i += maxWords - overlapWords;
-  }
-  return chunks;
-}
-
-async function scrapeAndIngestLibrary() {
+async function scrapeLibraryCalendar() {
   let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting library scrape with Playwright...');
+    console.log('Connected to database. Starting Library Hours deep crawl...');
 
-    // 1. Launch Playwright (Headless Browser)
     browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+
+    await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+
+    const iframeSelector = 'iframe[src*="libcal"], iframe[src*="calendar.google.com"]';
+    console.log('Locating hours iframe...');
     
-    // Go to the URL and wait until the network is mostly idle 
-    // This gives the JavaScript calendar widgets time to load their data
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector(iframeSelector, { timeout: 20000 });
+    const frame = page.frameLocator(iframeSelector);
 
-    // 2. Extract Text directly from the rendered page
-    // We grab the visible text and clean up excessive blank lines
-    let extractedText = await page.evaluate(() => {
-      // Try to target the main content area, fallback to body if standard tags aren't used
-      const mainContent = document.querySelector('main') || document.body;
-      return mainContent.innerText.replace(/\n\s*\n/g, '\n').trim();
-    });
+    let hoursData = [];
 
-    if (!extractedText) {
-      console.log('No text could be extracted from the page.');
-      return;
+    try {
+      // Attempt structured table extraction first
+      await frame.locator('table').first().waitFor({ timeout: 10000 });
+      hoursData = await frame.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('table tr'));
+        return rows.map(row => {
+          const cells = Array.from(row.querySelectorAll('td'));
+          return cells.length >= 2 ? {
+            area: cells[0].innerText.trim(),
+            hours: cells[1].innerText.trim()
+          } : null;
+        }).filter(item => item && item.area !== "" && !item.area.includes('Building'));
+      });
+    } catch (e) {
+      // Fallback strategy for unstructured calendar text
+      console.log('Table not found, performing raw text extraction...');
+      const rawText = await frame.locator('body').innerText();
+      // Split by specific date patterns or treat as one large chunk
+      hoursData = [{ area: "General Library Building", hours: rawText.trim() }];
     }
 
-    console.log('Successfully extracted dynamically rendered text. Chunking data...');
+    console.log(`Processing ${hoursData.length} records...`);
 
-    // 3. Chunk the Data
-    const chunks = chunkText(extractedText);
-    console.log(`Created ${chunks.length} chunks. Generating embeddings...`);
+    for (let i = 0; i < hoursData.length; i++) {
+      const entry = hoursData[i];
 
-    // 4. Generate Embeddings and Insert into Database
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = chunks[i];
+      // 1. DATA CLEANING: Remove Google Calendar UI noise
+      const cleanHours = entry.hours
+        .replace(/1 event, /gi, '')
+        .replace(/All day, /gi, '')
+        .replace(/Calendar: Library Hours.*/gi, '')
+        .replace(/Send feedback to Google.*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 
+      // 2. NICE FORMATTING: Create a semantic template for the LLM
+      const chunkContent = [
+        `Location/Area: ${entry.area}`,
+        `Date Context: ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`,
+        `Operating Hours: ${cleanHours}`,
+        `Source: ${SOURCE_URL}`,
+        `Last Verified: ${new Date().toISOString()}`
+      ].join('\n');
+
+      // 3. GENERATE EMBEDDINGS
       const embeddingResponse = await openai.embeddings.create({
-        model: embedModel, 
+        model: embedModel,
         input: chunkContent,
       });
       const embeddingVector = embeddingResponse.data[0].embedding;
 
-      const docInsertQuery = `
+      // 4. INSERT INTO DATABASE
+      const docResult = await client.query(`
         INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING doc_id;
-      `;
-      const docResult = await client.query(docInsertQuery, [
-        SOURCE_TITLE,
-        SOURCE_URL,
-        SOURCE_TYPE,
-        i,
-        chunkContent
-      ]);
-      const docId = docResult.rows[0].doc_id;
+      `, [SOURCE_TITLE, SOURCE_URL, SOURCE_TYPE, i, chunkContent]);
 
-      const vectorString = `[${embeddingVector.join(',')}]`;
-      const vectorInsertQuery = `
+      await client.query(`
         INSERT INTO DocumentEmbeddings (doc_id, embedding)
         VALUES ($1, $2);
-      `;
-      await client.query(vectorInsertQuery, [docId, vectorString]);
+      `, [docResult.rows[0].doc_id, `[${embeddingVector.join(',')}]`]);
 
-      console.log(`Inserted chunk ${i + 1}/${chunks.length} into vector database.`);
+      console.log(`Inserted nicely formatted chunk for: ${entry.area}`);
     }
 
-    console.log('Library data ingestion complete!');
+    console.log('Library Hours ingestion complete!');
 
-  } catch (error) {
-    console.error('Error during scraping/ingestion:', error);
+  } catch (err) {
+    console.error('Critical Error:', err);
   } finally {
-    // Ensure the browser closes even if the script crashes
     if (browser) await browser.close();
     await client.end();
   }
 }
 
-scrapeAndIngestLibrary();
+scrapeLibraryCalendar();

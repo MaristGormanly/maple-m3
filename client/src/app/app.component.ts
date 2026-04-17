@@ -59,7 +59,20 @@ export class AppComponent implements AfterViewChecked {
       },
       error: (err) => {
         this.zone.run(() => {
-          console.error('Unhandled UI error:', err);
+          // REVISED: Provide a fallback message in the UI so the user isn't stuck
+          console.error('API Error:', err);
+          
+          let friendlyMessage = 'The campus server is currently having trouble responding. Please try again in a moment.';
+          
+          if (err.status === 422) {
+             friendlyMessage = "I couldn't find any documents related to that request. Try asking about a different campus topic.";
+          }
+
+          this.messages.push({ 
+            role: 'assistant', 
+            content: friendlyMessage 
+          });
+          
           this.isLoading = false;
           this.cdr.detectChanges();
         });

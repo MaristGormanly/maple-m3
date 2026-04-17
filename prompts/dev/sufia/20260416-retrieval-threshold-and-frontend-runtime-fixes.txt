@@ -1,0 +1,23 @@
+Goal: Stabilize the Lab 2 prototype after full-stack integration testing by reducing retrieval false negatives for admin queries, fixing frontend async rendering behavior, aligning local-vs-production API environment usage, and documenting all implementation deviations in project docs.
+
+AI Tool Used: Gemini / Cursor IDE 
+
+Prompt Engineering Tactics Used:
+- Error-Driven Debug Loop: Fed exact terminal/API failure outputs (422 RETRIEVAL_FAILED, browser DNS ERR_NAME_NOT_RESOLVED, UI delayed rendering) into AI prompts to force root-cause analysis tied to real runtime symptoms.
+- Contract-First Alignment: Repeatedly asked AI to cross-check fixes against `docs-for-context/MAPLE-Architecture-Guide.md` and `docs-for-context/lab2-prototype.md` to ensure implementation changes were documented as intentional prototype deviations, not silent drift.
+
+Prompts Used:
+1. "Review the frontend against the MAPLE design doc, architecture guide, and lab2 prototype doc and tell me gaps."
+2. "I made the suggested changes; re-review alignment and tell me what still fails."
+3. "The chat API still returns RETRIEVAL_FAILED even after ingestion; diagnose why."
+4. "Give me exact patch text to lower threshold and improve routing for admin intent."
+5. "UI only updates after click event; explain and provide exact fix blocks."
+6. "Update README and design doc with these implementation changes and justifications."
+
+Results & Refinements:
+- Retrieval Calibration for MVP Reliability: Tuned retrieval threshold from `0.70` to `0.65` in backend retrieval logic after live testing showed false negatives for legitimate admin queries (notably Registrar). This improved recall enough to restore expected behavior in prototype demos.
+- Routing Improvement for Admin Intent: Expanded query routing to include administrative intent keywords (e.g., registrar, office, directory, admissions, financial aid), reducing broad unfocused retrieval for office-navigation questions.
+- Frontend Runtime Rendering Fix: Resolved delayed response rendering (content only appearing on user interaction) by adding explicit Angular change-detection handling (`NgZone` + `ChangeDetectorRef`) so async chat responses appear immediately.
+- Environment Targeting Fix: Corrected frontend local-testing behavior so requests target local backend instead of unresolved production hostname during development, eliminating `ERR_NAME_NOT_RESOLVED` failures.
+- Documentation Reconciliation: Updated root `README.md` and `docs/MAPLE_M3 Project Design Doc.md` to reflect Lab 2 implementation deviations, including threshold tuning rationale, status endpoint data-source correction, and frontend runtime fix.
+- Commit Recorded: `Lower retrieval threshold to 0.65 and frontend fixes`.

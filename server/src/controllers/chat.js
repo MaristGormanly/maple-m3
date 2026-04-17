@@ -60,10 +60,16 @@ const handleChat = async (req, res) => {
     }
 
     if (retrievalResult.chunks.length === 0) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          message: "I'm sorry, I couldn't find any specific campus information in my database to answer that accurately. Could you try rephrasing or asking about library hours, dining, or IT?",
+      const thresholdApplied = retrievalResult.metadata?.threshold_applied ?? 0.55;
+    
+      return res.status(422).json({
+        success: false,
+        data: null,
+        error: {
+          code: 'RETRIEVAL_FAILED',
+          message:
+            "I'm sorry, I couldn't find any specific campus information in my database to answer that accurately. Could you try rephrasing or asking about library hours, dining, or IT?",
+          details: `No chunks exceeded the similarity threshold of ${thresholdApplied}.`,
           conversation_id: activeConversationId,
           sources: [],
           confidence: 'none'
@@ -86,9 +92,9 @@ const handleChat = async (req, res) => {
     }));
 
     let confidence = 'low';
-    const topScore = retrievalResult.metadata.top_score;
-    if (topScore >= 0.85) confidence = 'high';
-    else if (topScore >= 0.75) confidence = 'medium';
+    const topScore = retrievalResult.metadata.top_score ?? 0;
+    if (topScore >= 0.75) confidence = 'high';
+    else if (topScore >= 0.65) confidence = 'medium';
 
     // Inject optional User Context
     const userContextStr = context && Object.keys(context).length > 0 

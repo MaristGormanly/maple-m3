@@ -1,0 +1,13 @@
+Goal: Develop a custom scraper script for the Admin Directory that integrates seamlessly into the MAPLE Campus Services & Student Life Navigator. 
+The objective was to extract structured data while maintaining architectural consistency. 
+
+AI Tool Used: Google Gemini
+
+Prompts Used:
+This is my spec document: # **MAPLE Campus Services & Student Life Navigator** 
+Attached: init.js, library.js, and library-services.js
+Create a scraper script for Admin Directory https://www.marist.edu/directory. Follow the same format as the library.js and 
+library-services.js scripts. Make sure to follow the guidelines in the spec document.
+
+Results & Refinements:
+- The AI generated a admin-directory.js but it was not perfect. Had to look into the html source further to debug.

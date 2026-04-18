@@ -1,3 +1,29 @@
+/**
+ * server/src/services/retrieval.js — Vector Retrieval Service
+ *
+ * Manages the PostgreSQL connection pool and performs vector similarity search
+ * against the DocumentEmbeddings table. This is the AI integration point for
+ * the RAG retrieval phase — future optimizations (re-ranking, hybrid search) plug in here.
+ *
+ * Key responsibilities:
+ *  - Initializes a pg.Pool (max 10 connections) for safe concurrent request handling
+ *  - Exports getDbPool() so other modules (routes, controllers) can share the same pool
+ *    without opening duplicate connections
+ *  - search(query, domainFilter, conversationId):
+ *      1. Embeds the query string via the configured embedding model
+ *         (nomic-embed-text via Ollama on DGX Spark, or text-embedding-3-small via OpenAI,
+ *          selected by the USE_LOCAL_MODEL environment variable)
+ *      2. Runs a pgvector cosine similarity query against DocumentEmbeddings JOIN Documents
+ *      3. Applies an optional source_type filter (domainFilter) to isolate the search
+ *         to a single data domain (Library, Dining, IT, etc.)
+ *      4. Filters results to a similarity threshold of 0.55 and returns the top 5 chunks
+ *      5. Logs retrieval metadata (chunks retrieved, top/min scores, threshold) via logger
+ *
+ * Embedding model dimensions:
+ *  - Local (USE_LOCAL_MODEL=true):  768 dims  (nomic-embed-text via Ollama)
+ *  - Cloud (USE_LOCAL_MODEL=false): 1536 dims (text-embedding-3-small via OpenAI)
+ * The DocumentEmbeddings table dimension must match — see models/db/init.js.
+ */
 const { OpenAI } = require('openai');
 const { Pool } = require('pg'); 
 const logger = require('../utils/logger');

@@ -1,3 +1,24 @@
+/**
+ * server/src/services/llm.js — LLM API Wrapper Service
+ *
+ * Single entry point for all LLM generation calls in the MAPLE M3 backend,
+ * per the Architecture Guide requirement that every module route LLM calls through
+ * a shared service layer with structured logging and error handling built in.
+ *
+ * Provider selection (controlled by USE_LOCAL_MODEL env var):
+ *  - true:  Ollama on the campus NVIDIA DGX Spark (llama3.1:8b), baseURL via SSH tunnel
+ *  - false: OpenAI API (gpt-4o-mini), requires OPENAI_API_KEY
+ *
+ * complete({ systemPrompt, messages, maxTokens, temperature, conversationId }):
+ *  - Prepends the system prompt to the messages array before sending to the provider
+ *  - Races the API call against a 30-second timeout to prevent hung requests
+ *  - Retries up to 2 times with exponential backoff on transient failures;
+ *    skips retries immediately for 4xx client errors (bad prompt, invalid key, etc.)
+ *  - Tracks and returns latency, token usage, and estimated cost per call
+ *  - Logs every attempt (success or failure) as a structured JSON event via logger
+ *  - Returns { success, content, model, usage, latencyMs } on success
+ *    or { success: false, error, model, latencyMs } on failure
+ */
 const { OpenAI } = require('openai');
 const logger = require('../utils/logger');
 const path = require('path');

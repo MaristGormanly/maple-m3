@@ -36,20 +36,41 @@ Run from the **repository root**. The script creates relational tables and a `Do
 node server/src/models/db/init.js
 ```
 
-### 4. Run the Backend Server
+### 4. Populate the Vector Store
+
+Each data domain has its own ingestion script in `data/scripts/`. Run any script from the **repository root** to scrape, chunk, embed, and store documents for that domain:
+
+```bash
+node data/scripts/admin-directory.js
+node data/scripts/library.js
+node data/scripts/dining-hours.js
+node data/scripts/dining-menus.js
+node data/scripts/campus-events.js
+node data/scripts/clubs.js
+node data/scripts/news.js
+node data/scripts/health-services.js
+node data/scripts/it-helpdesk.js
+node data/scripts/gym-pool.js
+node data/scripts/intramurals.js
+node data/scripts/library-services.js
+```
+
+Scripts can be run individually or all at once. Each script requires the database to be initialized (Step 3) and the embedding service (DGX Spark or OpenAI) to be reachable.
+
+### 5. Run the Backend Server
 ```bash
 cd server
-npm install
+npm install # Only on first run
 npm run start
 # Server runs on http://localhost:3000
 ```
 
 Equivalent: `node src/index.js` from the `server` directory.
 
-### 5. Run the Frontend Client
+### 6. Run the Frontend Client
 ```bash
 cd client
-npm install
+npm install # Only on first run
 npm start
 # Frontend runs on http://localhost:4200
 ```
@@ -83,7 +104,7 @@ Frontend Status (Lab 2 Prototype)
 AI Integration Summary
 ----------------------
 
-We opted for a multi-index RAG architecture utilizing metadata pre-filtering. Based on the user's query, we categorize the domain (Dining, Library, IT, Events, Rec/Pool, and Admin) to isolate the vector search, ensuring higher relevance. For Lab 2 prototype reliability, retrieval is currently tuned to a `0.65` cosine similarity threshold (documented deviation from the original `0.70` plan). If no chunks meet this threshold, the AI is bypassed entirely, and a standard `RETRIEVAL_FAILED` error is returned to prevent hallucination.
+We opted for a multi-index RAG architecture utilizing metadata pre-filtering. Based on the user's query, we categorize the domain (Dining, Library, IT, Events, Rec/Pool, and Admin) to isolate the vector search, ensuring higher relevance. For Lab 2 prototype reliability, retrieval is currently tuned to a `0.55` cosine similarity threshold (documented deviation from the original `0.70` plan). If no chunks meet this threshold, the AI is bypassed entirely, and a standard `RETRIEVAL_FAILED` error is returned to prevent hallucination.
 
 Lab 2 Prototype Deviations & Architectural Notes
 ------------------------------------------------
@@ -96,15 +117,24 @@ To meet the Lab 2 requirement for "functional MVP flows," our team made the foll
     
 3.  **Database Connection:** Upgraded retrieval.js from a single pg.Client to a pg.Pool to ensure the architecture is resilient to concurrent requests.
 
-4.  **Retrieval Threshold Tuning:** The prototype threshold was adjusted from `0.70` to `0.65` after validation runs showed false negatives for legitimate administrative queries (for example, Registrar office lookups). This improves recall for MVP flows and will be re-calibrated with broader evaluation data for final delivery.
+4.  **Retrieval Threshold Tuning:** The prototype threshold was adjusted from `0.70` to `0.55` after validation runs showed false negatives for legitimate administrative queries (for example, Registrar office lookups). This improves recall for MVP flows and will be re-calibrated with broader evaluation data for final delivery.
 
 5.  **Status Endpoint Data Source:** The `/api/v1/campus/status` endpoint was updated to read Events from the existing `Documents` table (`source_type = 'Events'`) instead of querying a non-existent `CampusEvents` table in the Lab 2 schema.
     
 
+Team Members
+------------
+
+| Name | Primary Responsibilities |
+|---|---|
+| [Sufia Khan] | [e.g. Backend API, Frontend UI] |
+| [Sydney Fronheiser] | [e.g. Data pipeline, Scraping scripts] |
+| [Jenna Iervolino] | [e.g. Scraping scripts, Backend API] |
+
 AI Disclosure & Tools Used
 --------------------------
 
-AI tools (GitHub Copilot and Gemini) were actively used throughout development.
+AI tools (Cursor IDE, Google Gemini, and GitHub Copilot) were actively used throughout development.
 
 *   **Code Scaffolding:** Used to generate the initial Express routing structures and PostgreSQL schemas.
     

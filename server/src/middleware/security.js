@@ -1,3 +1,20 @@
+/**
+ * server/src/middleware/security.js — Security Middleware
+ *
+ * Exports two Express middleware instances that satisfy the MAPLE Architecture Guide
+ * security baseline requirements:
+ *
+ *  apiLimiter  — express-rate-limit instance applied to AI-powered endpoints (/chat).
+ *                Caps each IP at 30 requests per minute to prevent accidental cost spikes
+ *                and abuse. Returns a MAPLE-compliant RATE_LIMITED (429) error envelope
+ *                on violation.
+ *
+ *  corsMiddleware — cors instance configured to allow only trusted origins. The allowed
+ *                   origins list is driven by the ALLOWED_ORIGINS environment variable
+ *                   (comma-separated) so it can differ between local development
+ *                   (http://localhost:4200) and production without a code change.
+ *                   Requests with no Origin header (e.g. curl, mobile) are also permitted.
+ */
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 

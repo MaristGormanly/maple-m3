@@ -1,3 +1,26 @@
+/**
+ * client/src/app/app.component.ts — Root Chat UI Component
+ *
+ * The sole UI component for the MAPLE M3 Angular client. Renders the full
+ * conversational chat interface and manages all interaction state.
+ *
+ * State:
+ *  - messages[]      — the ordered list of ChatMessage objects (user + assistant turns)
+ *                      initialised with a welcome message from the assistant
+ *  - userInput       — two-way bound to the textarea via [(ngModel)]
+ *  - isLoading       — controls the animated typing indicator and disables the Send button
+ *  - conversationId  — tracks the backend-assigned ID across turns for multi-turn context;
+ *                      null until the first successful response
+ *
+ * Key methods:
+ *  - sendMessage()   — pushes the user message, calls CampusApiService, appends the
+ *                      assistant response (or a friendly error message on failure)
+ *  - handleKeydown() — submits on Enter (without Shift) for natural chat UX
+ *  - scrollToBottom()— called after every view check to keep the latest message visible
+ *
+ * Template and styles are in app.component.html and app.component.scss respectively.
+ * Depends on: CampusApiService, MarkdownPipe, ChatMessage type.
+ */
 import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';

@@ -1,3 +1,19 @@
+/**
+ * server/src/routes/campus.js — Campus API Route Definitions
+ *
+ * Defines and exports all Express routes under the /api/v1/campus prefix.
+ * Route handlers are kept thin — business logic lives in the controller and services.
+ *
+ * Registered endpoints:
+ *  POST /chat    → chat controller (RAG pipeline, rate-limited)
+ *  GET  /status  → inline handler; queries Documents for source_type='Events' and
+ *                  returns up to 10 formatted event records (supports ?date= filtering)
+ *  POST /ingest  → inline handler; triggers the admin-directory.js scraping script
+ *                  asynchronously and returns a 202 with a job ID (MVP: Admin only)
+ *
+ * Note: /ingest accepts only source_type='Admin' for the Lab 2 MVP. All other domain
+ * ingestion is run directly via the scripts in data/scripts/.
+ */
 const express = require('express');
 const router = express.Router();
 const { exec } = require('child_process');

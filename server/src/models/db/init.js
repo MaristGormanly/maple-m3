@@ -1,3 +1,27 @@
+/**
+ * server/src/models/db/init.js — Database Schema Initialization Script
+ *
+ * One-time setup script that creates all MAPLE M3 database tables in PostgreSQL.
+ * Run from the repository root before starting the server for the first time:
+ *   node server/src/models/db/init.js
+ *
+ * Tables created (idempotent — uses CREATE TABLE IF NOT EXISTS):
+ *  Users              — student profiles (student_id, name, email, major)
+ *  Documents          — scraped/chunked campus content with metadata
+ *                       (doc_id, source_title, source_url, source_type, chunk_index, content)
+ *  DocumentEmbeddings — pgvector embeddings linked to Documents rows
+ *                       (embedding_id, doc_id FK, embedding vector(N))
+ *  ChatHistory        — persisted conversation turns for context and evaluation
+ *                       (chat_id, conversation_id, student_id FK, query_message, ai_response)
+ *
+ * Vector dimension is controlled by USE_LOCAL_MODEL env var:
+ *  - true:  768 dims  (nomic-embed-text via Ollama on DGX Spark)
+ *  - false: 1536 dims (text-embedding-3-small via OpenAI)
+ *
+ * RESET_DB=true drops all tables and rebuilds from scratch. Required when switching
+ * USE_LOCAL_MODEL after the DocumentEmbeddings table already exists, since the vector
+ * column dimension cannot be altered in place.
+ */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../../../.env') });
 const { Pool } = require('pg'); 

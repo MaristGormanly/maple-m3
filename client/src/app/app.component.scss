@@ -1,3 +1,22 @@
+/**
+ * client/src/app/app.component.scss — Chat UI Component Styles
+ *
+ * Scoped styles for AppComponent. Layout uses a flex column that fills the full
+ * viewport height, centred with a max-width of 900px.
+ *
+ * Key sections:
+ *  :host / .chat-layout     — full-height flex container with card shadow
+ *  .chat-header             — Marist Red (#c8102e) brand bar
+ *  .chat-window             — scrollable message area; flex column with gap
+ *  .message-wrapper         — per-message row; user messages align right,
+ *                             assistant messages align left
+ *  .message-content         — bubble styling; .error-msg applies a red left border
+ *  .text / ::ng-deep        — markdown output resets (p, a, ul spacing/colour)
+ *  .confidence-badge        — colour-coded pill: green (high), amber (medium), red (low/none)
+ *  .sources-list            — citation block below assistant responses
+ *  .chat-input-area         — sticky footer with textarea + Send button + feedback link
+ *  .loading-indicator       — three-dot bounce animation shown while isLoading is true
+ */
 :host {
     display: block;
     height: 100vh;

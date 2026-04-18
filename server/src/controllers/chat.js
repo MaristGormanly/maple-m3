@@ -1,3 +1,25 @@
+/**
+ * server/src/controllers/chat.js — Chat Request Handler
+ *
+ * Orchestrates the full RAG pipeline for a single POST /api/v1/campus/chat request:
+ *  1. Validates the incoming message field
+ *  2. Assigns or inherits a conversation_id for multi-turn context tracking
+ *  3. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
+ *     to narrow the vector search before embedding
+ *  4. Calls retrievalService.search() to embed the query and fetch the top-k chunks
+ *     from PostgreSQL + pgvector above the configured similarity threshold
+ *  5. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
+ *     bypassing the LLM entirely to prevent hallucination
+ *  6. Calculates a confidence level (high / medium / low) from the top retrieval score
+ *  7. Injects retrieved chunks and the current timestamp into the system prompt loaded
+ *     from prompts/system/main-system-prompt.md (loaded dynamically per request)
+ *  8. Calls llmService.complete() and handles AI_ERROR (502) on failure
+ *  9. Persists the query and AI response to the ChatHistory table
+ * 10. Returns the MAPLE standard response envelope with response, conversation_id,
+ *     sources[], confidence, and metadata (model, latency_ms)
+ *
+ * All error paths return a MAPLE-compliant error envelope (success: false).
+ */
 const fs = require('fs');
 const path = require('path');
 const retrievalService = require('../services/retrieval');

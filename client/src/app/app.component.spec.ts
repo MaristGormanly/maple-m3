@@ -1,3 +1,17 @@
+/**
+ * client/src/app/app.component.spec.ts — AppComponent Unit Tests
+ *
+ * Vitest/Angular TestBed tests for the root AppComponent. Provides
+ * HttpClient and HttpClientTesting so CampusApiService can be injected
+ * without making real network requests during tests.
+ *
+ * Test cases:
+ *  - Component instantiates successfully
+ *  - messages[] is initialised with exactly one assistant welcome message
+ *  - The rendered template contains the MAPLE brand title in an <h1>
+ *
+ * Run with: `ng test` (from the client/ directory)
+ */
 import { TestBed } from '@angular/core/testing';
 import { AppComponent } from './app.component';
 import { provideHttpClient } from '@angular/common/http';

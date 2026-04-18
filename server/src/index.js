@@ -1,3 +1,16 @@
+/**
+ * server/src/index.js — Application Entry Point
+ *
+ * Bootstraps the MAPLE M3 Express server. Responsibilities:
+ *  - Loads environment variables from .env via dotenv
+ *  - Registers global middleware (JSON body parsing, CORS)
+ *  - Mounts the /api/v1/campus route group and the top-level /health liveness endpoint
+ *  - Waits for the PostgreSQL connection pool (retrieval service) to be ready before
+ *    opening the HTTP port, so the server never accepts traffic before the DB is available
+ *
+ * Start: `npm run start` (from server/) or `node src/index.js`
+ * Default port: 3000 (overridable via PORT env var)
+ */
 const express = require('express');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });

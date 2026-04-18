@@ -1,0 +1,24 @@
+Goal: Develop scraper capable of performing a "deep crawl" on Marist LibGuides webpages.
+The objective was to discover individual FAQ links within dynamic widgets and extract them as unique, structured JSON records for a RAG (Retrieval-Augmented Generation) pipeline, ensuring high precision and temporal awareness. 
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Context Injection
+- Iterative Refinement
+- Constraint Setting
+
+Prompts Used:
+- "I want to do a crawl on the FAQs from these pages instead: [List of URLs]. Review how the original library-services.js file was coded."
+- "Here is the elements from [URL] to find where to scrape the FAQs." (Attached DOM screenshot)
+- "Not quite what I am looking for. Review how the original library-services.js file was coded. I want to only scrape the FAQ section of each site and then deep crawl into each question and answer per record."
+- "Why doesn't it work for https://libguides.marist.edu/c.php?g=87344&p=8830695?"
+
+Results & Refinements:
+1. (Deep Crawl): After clarifying the intent, the AI restructured the script into a two-phase process: a "Discovery Phase" to find FAQ links and an "Extraction Phase" to visit each link individually.
+
+2. (Dynamic Content): By analyzing the DOM screenshot, the AI identified that the FAQs were loaded via LibAnswers widgets. It added await page.waitForSelector('.s-la-widget') to handle asynchronous loading.
+
+3. (Broad Attribute Selectors): To fix issues with c.php pages where CSS classes were inconsistent, the script was refined to use a broad attribute selector a[href*="/faq/"], ensuring the scraper could find links regardless of the container template.
+
+Outcome: A fully functional library-services.js file that complies with the project’s security baseline, data quality standards, and similarity thresholds (0.55/0.70).

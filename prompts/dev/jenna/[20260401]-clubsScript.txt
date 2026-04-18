@@ -1,6 +1,16 @@
-This is my spec document: # **MAPLE Campus Services & Student Life Navigator**
+Goal: Develop a custom scraper script for the Club Directory that integrates seamlessly into the MAPLE Campus Services & Student Life Navigator. 
+The objective was to extract structured data while maintaining architectural consistency. 
 
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Constraint Setting
+
+Prompts Used:
+This is my spec document: # **MAPLE Campus Services & Student Life Navigator** 
 Attached: init.js, library.js, and library-services.js
-
 Create a scraper script for Club Directory data. Follow the same format as the library.js and 
 library-services.js scripts. Make sure to follow the guidelines in the spec document.
+
+Results & Refinements:
+- The AI successfully generated a clubs.js structure that mirrored the modular pattern of the library scripts, including the necessary export/import logic found in init.js.

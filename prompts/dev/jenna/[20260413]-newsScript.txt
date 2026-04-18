@@ -1,3 +1,22 @@
+Goal: Build ingestion script for the Marist Circle student paper. Scrape article title, author, and data from the site.
+Scraper aligns with the project design doc and existing scraper patterns. 
+
+AI Tool Used: Cursor
+
+Prompt Engineering Tactics Used:
+- File and doc Context
+- Constraint Setting
+
+Prompts Used: 
 @docs/MAPLE_M3 Project Design Doc.md I want to create a scraper in @data/scripts/news.js that scrapes 
 this webpage for the article_title, author, and date. Use @data/scripts/admin-directory.js as a guide to 
 create the script. Use https://www.maristcircle.com/home instead of the link described in the design doc. 
+
+Can I have it scrape content from teach of the tabs above? The tabs "news", "features", "opinion" using the following links:
+https://www.maristcircle.com/features 
+https://www.maristcircle.com/opinion 
+https://www.maristcircle.com/arts-entertainment 
+
+Results & Refinements:
+- First version: Single-page scrape of the Marist Circle home list with Squarespace selectors (BlogList-item, title/author/date), embeddings, and Documents / DocumentEmbeddings inserts like other scripts.
+- Refinement: Replaced one URL with a SECTIONS array (home + features + opinion + arts-entertainment), shared extractBlogListArticles, per-row source_title and section: line in chunk text, resilient logging when a section fails or is empty, and a global chunk_index over the flattened article list.

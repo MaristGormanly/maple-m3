@@ -1,0 +1,21 @@
+Goal: Develop a scraper for the Marist Library FAQ portal that extracts questions, answers, and associated metadata (staff, dates, topics) to be stored as vector embeddings in a PostgreSQL database.
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Context Injection
+- Chain-of-Thought Prompting
+- Iterative Refinement
+- Constraint Setting
+
+Prompts Used:
+- "I want to have a scraper that crawls through each link in the library FAQs and records 'question', 'answer', a list of its tagged topics, and date it was last updated... Follow the guidelines in the design doc and use clubs.js as an example."
+- "[Attached Screenshot of DOM elements] ...this is the breakdown of the elements."
+- "[Attached Screenshot of answer body] ...all of the answer texts says no content found. use this screenshot of the elements to scrape the answers as well."
+
+Results & Refinements:
+1. mplemented page.waitForSelector() and broadened URL filtering to catch all links containing /faq/.
+2. Adjusted selectors to target #s-srch-results-0 and .s-srch-result-title based on the user-provided DOM breakdown.
+3. Finalized the answer extraction logic to specifically target .s-la-faq-answer-body to prevent "content not found" errors.
+
+Outcome: A complete script that adheres to the MAPLE M3 Multi-Index RAG architecture, ensuring data freshness and source attribution.

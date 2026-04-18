@@ -56,7 +56,7 @@
         <textarea 
           [(ngModel)]="userInput" 
           (keydown)="handleKeydown($event)"
-          placeholder="Ask about dining menus, library hours, or IT help..." 
+          placeholder="Ask about campus events, library hours, IT help, and more..." 
           rows="1">
         </textarea>
         <button (click)="sendMessage()" [disabled]="isLoading || !userInput.trim()">
@@ -64,7 +64,7 @@
         </button>
       </div>
       <div class="feedback-link">
-        <a href="https://forms.google.com/" target="_blank" rel="noopener noreferrer">Give Feedback</a>
+        <a href="https://forms.gle/9mP7LXf39HrqGcD46" target="_blank" rel="noopener noreferrer">Give Feedback</a>
       </div>
     </footer>
   </div>

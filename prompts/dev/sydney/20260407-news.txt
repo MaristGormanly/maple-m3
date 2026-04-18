@@ -1,0 +1,13 @@
+Goal: Develop a custom scraper script for news that integrates seamlessly into the MAPLE Campus Services & Student Life Navigator. 
+The objective was to extract structured data while maintaining architectural consistency. 
+
+AI Tool Used: Google Gemini
+
+Prompts Used:
+This is my spec document: # **MAPLE Campus Services & Student Life Navigator** 
+Attached: init.js, library.js, and library-services.js
+Create a scraper script for news articles https://www.maristcircle.com/home. Follow the same format as the library.js and 
+library-services.js scripts. Make sure to follow the guidelines in the spec document.
+
+Results
+The gemini generated news.js and it fit all the requirements.

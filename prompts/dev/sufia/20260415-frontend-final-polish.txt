@@ -1,0 +1,15 @@
+Goal: Execute the final polish on the Angular frontend to achieve 100% compliance with the MAPLE Architecture Guide and Lab 2 guidelines. Focus areas included type strictness for the API envelope, bulletproofing the UI loading state, and ensuring the testing feedback loop is fully active.
+
+AI Tool Used: Gemini / Cursor IDE (with active .cursorrules Angular enforcement)
+
+Prompt Engineering Tactics Used:
+- Iterative Feedback Loop: Fed the instructor/peer review feedback directly to the AI, highlighting the specific warnings about the `any` type in the metadata envelope and the UX edge case regarding the loading state.
+- Schema Enforcement: Explicitly commanded the AI to map the frontend TypeScript interfaces 1:1 with the backend's required JSON envelope structure to eliminate generic typing.
+
+Prompts Used:
+1. "Here is feedback on your changes: [Pasted review noting the `metadata: any` weakness and the `isLoading` edge case]. Make changes to the code to align with the lab 2 document and project guidelines according to this feedback."
+
+Results & Refinements:
+- Strict Type Enforcement: Replaced the generic `any` type in the `MapleResponse` with a strictly defined `MapleMetadata` interface that maps directly to the Architecture Guide (requiring `timestamp`, `module`, and `version`). Cursor's AI linter helped validate this across the component tree.
+- Bulletproof UX State: Refactored the `subscribe` block in `app.component.ts` to explicitly handle the `error` callback. Even though the `CampusApiService` safely catches and normalizes HTTP errors (like the custom `422 RETRIEVAL_FAILED` or `502 AI_ERROR`), this added a safety net to guarantee the `isLoading` boolean always resets, preventing the UI from hanging under catastrophic network failures.
+- Commits Pushed: `Refactor MapleResponse metadata to strict types`, `Bulletproof isLoading UI state on network failure`.

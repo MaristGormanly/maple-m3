@@ -11,7 +11,7 @@ This module utilizes a Retrieval-Augmented Generation (RAG) pipeline to dynamica
 
 ## Tech Stack
 * **Backend:** Node.js with Express
-* **Frontend:** Angular 19+
+* **Frontend:** Angular 21 (standalone components)
 * **Database:** PostgreSQL with `pgvector` extension
 * **AI Models:** DGX Spark via Ollama (`llama3.1:8b` for generation, `nomic-embed-text` for embeddings)
 * **Data Pipeline:** Playwright, Cheerio
@@ -36,15 +36,44 @@ Run from the **repository root**. The script creates relational tables and a `Do
 node server/src/models/db/init.js
 ```
 
-### 4. Run the Backend Server
+### 4. Populate the Vector Store
+
+Each data domain has its own ingestion script in `data/scripts/`. Run any script from the **repository root** to scrape, chunk, embed, and store documents for that domain:
+
+```bash
+node data/scripts/admin-directory.js
+node data/scripts/library.js
+node data/scripts/dining-hours.js
+node data/scripts/dining-menus.js
+node data/scripts/campus-events.js
+node data/scripts/clubs.js
+node data/scripts/news.js
+node data/scripts/health-services.js
+node data/scripts/it-helpdesk.js
+node data/scripts/gym-pool.js
+node data/scripts/intramurals.js
+node data/scripts/library-services.js
+```
+
+Scripts can be run individually or all at once. Each script requires the database to be initialized (Step 3) and the embedding service (DGX Spark or OpenAI) to be reachable.
+
+### 5. Run the Backend Server
 ```bash
 cd server
-npm install
+npm install # Only on first run
 npm run start
 # Server runs on http://localhost:3000
 ```
 
 Equivalent: `node src/index.js` from the `server` directory.
+
+### 6. Run the Frontend Client
+```bash
+cd client
+npm install # Only on first run
+npm start
+# Frontend runs on http://localhost:4200
+```
 
 ## Deployment
 
@@ -57,47 +86,58 @@ Retrieval and answer quality will be measured with a golden-query set (precision
 Current Status (Lab 2 Prototype)
 --------------------------------
 
-*   **Working:** Complete conversational RAG flow (/chat), dynamic system prompt loading, structured JSON logging, temporal metadata pre-filtering, and rate-limiting security middleware.
+*   **Working:** Complete conversational RAG flow (`/chat`), dynamic system prompt loading, structured JSON logging, temporal metadata pre-filtering, rate-limiting security middleware, and a connected Angular chat UI.
     
 *   **Stubbed/Scoped:** The /ingest route currently only triggers the Admin Directory scraping script. This is scoped down for the MVP to safely demonstrate the pipeline hook without overwhelming the server.
     
-*   **Planned:** Full scheduled CRON jobs for high-volatility data ingestion (dining menus) and Angular frontend UI integration.
+*   **Planned:** Full scheduled CRON jobs for high-volatility data ingestion (dining menus).
+
+Frontend Status (Lab 2 Prototype)
+---------------------------------
+
+* **Implemented chat interface:** The frontend now provides a functional student chat UI in `client/src/app/app.component.*`, connected to the backend chat endpoint.
+* **Source attribution and trust signals:** Assistant responses render source links and confidence badges (`high`/`medium`/`low`/`none`) in the UI.
+* **Conversation continuity:** The frontend consumes backend `conversation_id` values to preserve multi-turn context.
+* **Environment-based API config:** API base URLs are externalized in `client/src/environments/environment.ts` and `environment.development.ts`.
     
 
 AI Integration Summary
 ----------------------
 
-We opted for a multi-index RAG architecture utilizing metadata pre-filtering. Based on the user's query, we categorize the domain (Dining, Library, IT) to isolate the vector search, ensuring higher relevance. We enforce a strict 0.70 cosine similarity threshold; if no chunks meet this, the AI is bypassed entirely, and a standard RETRIEVAL\_FAILED error is returned to prevent hallucination.
+We opted for a multi-index RAG architecture utilizing metadata pre-filtering. Based on the user's query, we categorize the domain (Dining, Library, IT, Events, Rec/Pool, and Admin) to isolate the vector search, ensuring higher relevance. For Lab 2 prototype reliability, retrieval is currently tuned to a `0.55` cosine similarity threshold (documented deviation from the original `0.70` plan). If no chunks meet this threshold, the AI is bypassed entirely, and a standard `RETRIEVAL_FAILED` error is returned to prevent hallucination.
 
 Lab 2 Prototype Deviations & Architectural Notes
 ------------------------------------------------
 
-To meet the Lab 2 requirement for "functional MVP flows," our team made the following intentional scope adjustments from our Week 8 Design Doc:
+To meet the Lab 2 requirement for "functional MVP flows," our team made the following intentional scope adjustments from our Design Doc:
 
 1.  **Ingestion API Scope:** The POST /api/v1/campus/ingest endpoint only processes source\_type: 'Admin' for the MVP.
     
 2.  **Vector Dimension Toggling:** We implemented the USE\_LOCAL\_MODEL toggle to switch between local DGX Spark (768 dims) and OpenAI (1536 dims). _Caveat:_ If toggling this environment variable after the database is already created, you must temporarily set RESET\_DB=true in .env and run init.js to drop and rebuild the DocumentEmbeddings table with the correct dimension.
     
 3.  **Database Connection:** Upgraded retrieval.js from a single pg.Client to a pg.Pool to ensure the architecture is resilient to concurrent requests.
+
+4.  **Retrieval Threshold Tuning:** The prototype threshold was adjusted from `0.70` to `0.55` after validation runs showed false negatives for legitimate administrative queries (for example, Registrar office lookups). This improves recall for MVP flows and will be re-calibrated with broader evaluation data for final delivery.
+
+5.  **Status Endpoint Data Source:** The `/api/v1/campus/status` endpoint was updated to read Events from the existing `Documents` table (`source_type = 'Events'`) instead of querying a non-existent `CampusEvents` table in the Lab 2 schema.
     
+
+Team Members
+------------
+
+| Name | Primary Responsibilities |
+|---|---|
+| [Sufia Khan] | [e.g. Backend API, Frontend UI] |
+| [Sydney Fronheiser] | [e.g. Data pipeline, Scraping scripts] |
+| [Jenna Iervolino] | [e.g. Scraping scripts, Backend API] |
 
 AI Disclosure & Tools Used
 --------------------------
 
-AI tools (GitHub Copilot and Gemini) were actively used throughout development.
+AI tools (Cursor IDE, Google Gemini, and GitHub Copilot) were actively used throughout development.
 
 *   **Code Scaffolding:** Used to generate the initial Express routing structures and PostgreSQL schemas.
     
 *   **Iterative Debugging:** Used to diagnose dependency errors (like missing express-rate-limit packages) and database race conditions.
     
 *   **Prompt Logs:** Full records of our AI-assisted development process can be found in the prompts/dev/ directory.
-    
-
-Team Members
-------------
-
-*   \[Sufia Khan\] - Backend AI Integration
-    
-*   \[Teammate 2\] - Data Ingestion Pipelines
-    
-*   \[Teammate 3\] - Angular Frontend & UI

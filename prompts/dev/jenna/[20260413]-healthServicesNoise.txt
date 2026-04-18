@@ -1,0 +1,18 @@
+Goal: Remove and reduce noise from the health services scraper, so that relevant and useful information can be stored in the database. 
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Iterative Refinements- Context Injection
+- Negative Constraint Setting - remove non-essental elements
+
+Prompts Used:
+- "this is what the health services scripts finds... How can I change the script to make the information more useful according to the design doc?"
+- "can you give me the full health-services.js file?"
+- "I need to revise this script. For the IT-helpdesk... [list of specific URLs]"
+
+Results & Refinements:
+The first scraper produced "noisy" chunks filled with CSS and JavaScript, which would have degraded the cosine similarity scores.
+1. Resolved noise: Implemented specific Playwright selectors (#main-content) and DOM cloning to surgically remove <style> and <script> tags before extraction.
+2. (Regex Cleaning): Added a cleanScrapedText function to strip out lingering media queries and jQuery snippets.
+3. (Structural Tagging): Moved from raw text blobs to a "Topic/Content" structure, ensuring every data chunk in the database is explicitly labeled with its source title to improve LLM reasoning and citation accuracy.

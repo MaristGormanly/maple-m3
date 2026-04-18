@@ -1,3 +1,21 @@
+/**
+ * server/src/utils/logger.js — Structured JSON Logger
+ *
+ * Provides lightweight structured logging for all AI interactions, satisfying the
+ * MAPLE Architecture Guide observability requirement. Logs are written as newline-
+ * delimited JSON to daily rotating files in logs/maple-m3-YYYY-MM-DD.log.
+ * The logs/ directory is created automatically if it does not exist.
+ *
+ * Exported functions (each writes one JSON event line):
+ *  logLLMCall(data)   — records an LLM generation attempt with model, token usage,
+ *                        latency, estimated cost, success flag, and error if any
+ *  logRetrieval(data) — records a vector search with query, chunks retrieved,
+ *                        top/min similarity scores, and the threshold applied
+ *  logError(data)     — records an unexpected error with source and message
+ *
+ * All events include timestamp and module: "m3" fields automatically.
+ * These log files are the primary observability output for the MAPLE pilot evaluation.
+ */
 const fs = require('fs');
 const path = require('path');
 

@@ -1,0 +1,22 @@
+Goal: Calibrate retrieval for the Lab 2 prototype by lowering the active similarity threshold to reduce false negatives on administrative queries, tighten server-side handling of empty retrieval (structured MAPLE 422 responses), align confidence bands with top retrieval scores, and reconcile documentation, system prompt, and reflection so runtime behavior matches what we ship and grade against.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Symptom-to-Contract Trace: Used live API responses (422 RETRIEVAL_FAILED, missing threshold metadata, inconsistent confidence) as ground truth to drive patches in `chat.js` and `retrieval.js` rather than guessing thresholds in isolation.
+- Baseline vs Runtime Split: Explicitly separated the design-doc baseline (`0.70` stricter target) from the prototype-active threshold (`0.55`) so graders and future us can see intentional deviation with rationale, not silent drift.
+- Red-Team Error Envelope: Asked AI to verify 422 bodies against `docs-for-context/MAPLE-Architecture-Guide.md` (success/data/error/metadata shape, RETRIEVAL_FAILED semantics).
+
+Prompts Used:
+1. "Admin / Registrar queries still return RETRIEVAL_FAILED after ingestion; walk through embedding, SQL threshold, and domain filter to find false negatives."
+2. "Lower the active threshold to 0.55 but document 0.70 as the stricter baseline in README and reflection."
+3. "Ensure 422 RETRIEVAL_FAILED returns threshold_applied, top_score fallback in metadata, and a clear user-facing message without calling the LLM."
+4. "Align confidence bands: high >= 0.75, medium >= 0.65; document in api-spec if needed."
+5. "Update system prompt and reflection for hallucination guardrails and threshold rationale."
+
+Results & Refinements:
+- Retrieval threshold: Active cosine similarity cutoff set to **0.55** in retrieval service to improve recall on legitimate admin-directory-style queries; **0.70** retained in docs as the stricter design baseline for final-project re-calibration.
+- Chat controller (`handleChat`): On empty chunks after retrieval, returns structured **422 RETRIEVAL_FAILED** with `success: false`, `data: null`, and `error` including threshold detail, `conversation_id`, empty `sources`, and `confidence: none`; metadata carries `threshold_applied` and retrieval stats (e.g. `top_score` when useful) so logs and clients stay debuggable.
+- Confidence bands: **High** when top score ≥ **0.75**; **medium** when ≥ **0.65**; otherwise **low** (consistent with post-retrieval ranking in chat flow).
+- Documentation & prompts: Updated project docs, `prompts/system/main-system-prompt.md`, and `reflection.md` to describe the threshold tradeoff (fewer false negatives vs potentially noisier chunks), hallucination avoidance when retrieval fails, and alignment with Lab 2 “functional MVP” goals.
+- Commit recorded: **Lower retrieval threshold; improve handling** (author: sufia1117) — ties together retrieval tuning, 422 semantics, confidence handling, and doc/prompt reconciliation for prototype stability.

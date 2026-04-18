@@ -1,28 +1,21 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const { Client } = require('pg');
-const cheerio = require('cheerio');
+const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
-let openai;
-let embedModel;
+/**
+ * MAPLE M3 Configuration
+ * Supports local DGX Spark (Ollama) or OpenAI frontier models
+ */
+const USE_LOCAL = process.env.USE_LOCAL_MODEL === 'true';
+const openai = new OpenAI({
+  baseURL: USE_LOCAL ? 'http://localhost:11434/v1' : undefined,
+  apiKey: USE_LOCAL ? 'ollama' : process.env.OPENAI_API_KEY,
+});
 
-if (process.env.USE_LOCAL_MODEL === 'true') {
-  // Point to the DGX Spark via your SSH tunnel
-  openai = new OpenAI({
-    baseURL: 'http://localhost:11434/v1', 
-    apiKey: 'ollama', 
-  });
-  embedModel = 'nomic-embed-text'; 
-} else {
-  // Fallback to real OpenAI if needed later 
-  openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-  embedModel = 'text-embedding-3-small'; 
-}
+const embedModel = USE_LOCAL ? 'nomic-embed-text' : 'text-embedding-3-small';
 
-// Initialize PostgreSQL Client
 const client = new Client({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -31,120 +24,98 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-const SOURCE_URL = 'https://www.marist.edu/helpdesk';
-const SOURCE_TITLE = 'IT Helpdesk Support & FAQs';
-const SOURCE_TYPE = 'IT Support';
+const FAQ_URLS = [
+  'https://teamdynamix.marist.edu/TDClient/92/Portal/KB/ArticleDet?ID=954',
+  'https://teamdynamix.marist.edu/TDClient/92/Portal/KB/ArticleDet?ID=819',
+  'https://teamdynamix.marist.edu/TDClient/92/Portal/KB/ArticleDet?ID=12389'
+];
 
-/**
- * Helper function to chunk text.
- * The spec calls for 500-token chunks with 10% overlap. 
- * We approximate tokens to words (1 token ≈ 0.75 words).
- */
-function chunkText(text, maxWords = 400, overlapWords = 40) {
-  const words = text.split(/\s+/);
-  const chunks = [];
-  let i = 0;
-  
-  while (i < words.length) {
-    const chunk = words.slice(i, i + maxWords).join(' ');
-    chunks.push(chunk);
-    i += maxWords - overlapWords;
-  }
-  return chunks;
-}
-
-async function scrapeAndIngestITHelpdesk() {
+async function scrapeFAQs() {
+  let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting IT Helpdesk scrape with Cheerio...');
+    console.log('Connected to database. Starting IT FAQ ingestion...');
 
-    // 1. Fetch the HTML
-    const response = await fetch(SOURCE_URL);
-    if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
-    const html = await response.text();
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    // 2. Parse with Cheerio
-    const $ = cheerio.load(html);
-    let extractedText = '';
+    for (const url of FAQ_URLS) {
+      console.log(`Scraping: ${url}`);
+      await page.goto(url, { waitUntil: 'networkidle' });
 
-    // ATTEMPT A: Look for standard <details> / <summary> accordion tags
-    $('details').each((index, element) => {
-      const question = $(element).find('summary').text().trim();
-      // Get the rest of the text inside the details tag (the answer)
-      const answer = $(element).text().replace(question, '').trim();
-      if (question && answer) {
-        extractedText += `Question: ${question}\nAnswer: ${answer}\n\n`;
+      const faqs = await page.evaluate(() => {
+        const results = [];
+        const panels = document.querySelectorAll('.panel');
+        
+        // Design Doc: Filtering out "stale" or non-informative records
+        const noiseKeywords = ['attachments', 'related services', 'related offerings'];
+
+        panels.forEach(panel => {
+          const questionEl = panel.querySelector('.panel-heading');
+          const answerEl = panel.querySelector('[aria-expanded], .panel-body');
+          
+          if (questionEl && answerEl) {
+            const questionText = questionEl.innerText.trim();
+            const answerText = answerEl.innerText.trim();
+            const lowerHeader = questionText.toLowerCase();
+
+            // Skip sections that don't provide student-facing value
+            const isNoise = noiseKeywords.some(kw => lowerHeader.includes(kw)) || 
+                            answerText.toLowerCase().includes('no attachments found');
+
+            if (!isNoise && questionText.length > 0) {
+              results.push({
+                question: questionText,
+                answer: answerText
+              });
+            }
+          }
+        });
+        return results;
+      });
+
+      for (let i = 0; i < faqs.length; i++) {
+        const item = faqs[i];
+        
+        // Design Doc: One-record-per-chunk strategy using required JSON fields
+        const chunkContent = JSON.stringify({
+          category: "IT FAQ",
+          question: item.question,
+          answer_text: item.answer.replace(/\s+/g, ' ').substring(0, 1500)
+        });
+
+        // Generate embeddings via configured model
+        const embeddingRes = await openai.embeddings.create({
+          model: embedModel,
+          input: chunkContent,
+        });
+
+        // Insert Document record with mandatory metadata for source attribution
+        const docRes = await client.query(
+          `INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content, last_updated)
+           VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING doc_id`,
+          [`FAQ: ${item.question}`, url, 'IT Support', i, chunkContent]
+        );
+
+        const docId = docRes.rows[0].doc_id;
+
+        // Insert Vector into DocumentEmbeddings for pgvector search
+        await client.query(
+          `INSERT INTO DocumentEmbeddings (doc_id, embedding) VALUES ($1, $2)`,
+          [docId, `[${embeddingRes.data[0].embedding.join(',')}]`]
+        );
+
+        console.log(`Successfully ingested: ${item.question}`);
       }
-    });
-
-    // ATTEMPT B: Look for Bootstrap-style accordions or elements with "accordion" class
-    if (!extractedText.trim()) {
-      $('[class*="accordion"]').each((index, element) => {
-        const text = $(element).text().replace(/\n\s*\n/g, '\n').trim();
-        if (text) {
-          extractedText += text + '\n\n';
-        }
-      });
     }
-
-    // FALLBACK: If no accordions are found, grab the main content area
-    if (!extractedText.trim()) {
-      console.log('No specific accordion elements found. Falling back to body parsing...');
-      const mainContent = $('main').length ? $('main') : $('body');
-      extractedText = mainContent.text().replace(/\n\s*\n/g, '\n').trim();
-    }
-
-    // Clean non-ASCII characters to prevent vector noise
-    extractedText = extractedText.replace(/[^\x00-\x7F]/g, " ");
-
-    console.log('Successfully extracted FAQ text. Chunking data...');
-
-    // 3. Chunk the Data
-    const chunks = chunkText(extractedText);
-    console.log(`Created ${chunks.length} chunks. Generating OpenAI embeddings...`);
-
-    // 4. Generate Embeddings and Insert into Database
-    for (let i = 0; i < chunks.length; i++) {
-      const chunkContent = chunks[i];
-
-      const embeddingResponse = await openai.embeddings.create({
-        model: embedModel, 
-        input: chunkContent,
-      });
-      const embeddingVector = embeddingResponse.data[0].embedding;
-
-      // Insert into Documents Table with required metadata
-      const docInsertQuery = `
-        INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING doc_id;
-      `;
-      const docResult = await client.query(docInsertQuery, [
-        SOURCE_TITLE,
-        SOURCE_URL,
-        SOURCE_TYPE,
-        i,
-        chunkContent
-      ]);
-      const docId = docResult.rows[0].doc_id;
-
-      const vectorString = `[${embeddingVector.join(',')}]`;
-      const vectorInsertQuery = `
-        INSERT INTO DocumentEmbeddings (doc_id, embedding)
-        VALUES ($1, $2);
-      `;
-      await client.query(vectorInsertQuery, [docId, vectorString]);
-
-      console.log(`Inserted chunk ${i + 1}/${chunks.length} into vector database.`);
-    }
-
-    console.log('IT Helpdesk data ingestion complete!');
-
-  } catch (error) {
-    console.error('Error during scraping/ingestion:', error);
+    console.log('IT Helpdesk ingestion complete!');
+  } catch (err) {
+    console.error('Ingestion Error:', err.message);
   } finally {
+    if (browser) await browser.close();
     await client.end();
   }
 }
 
-scrapeAndIngestITHelpdesk();
+scrapeFAQs();

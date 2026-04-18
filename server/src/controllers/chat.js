@@ -1,3 +1,25 @@
+/**
+ * server/src/controllers/chat.js — Chat Request Handler
+ *
+ * Orchestrates the full RAG pipeline for a single POST /api/v1/campus/chat request:
+ *  1. Validates the incoming message field
+ *  2. Assigns or inherits a conversation_id for multi-turn context tracking
+ *  3. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
+ *     to narrow the vector search before embedding
+ *  4. Calls retrievalService.search() to embed the query and fetch the top-k chunks
+ *     from PostgreSQL + pgvector above the configured similarity threshold
+ *  5. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
+ *     bypassing the LLM entirely to prevent hallucination
+ *  6. Calculates a confidence level (high / medium / low) from the top retrieval score
+ *  7. Injects retrieved chunks and the current timestamp into the system prompt loaded
+ *     from prompts/system/main-system-prompt.md (loaded dynamically per request)
+ *  8. Calls llmService.complete() and handles AI_ERROR (502) on failure
+ *  9. Persists the query and AI response to the ChatHistory table
+ * 10. Returns the MAPLE standard response envelope with response, conversation_id,
+ *     sources[], confidence, and metadata (model, latency_ms)
+ *
+ * All error paths return a MAPLE-compliant error envelope (success: false).
+ */
 const fs = require('fs');
 const path = require('path');
 const retrievalService = require('../services/retrieval');
@@ -32,11 +54,16 @@ const handleChat = async (req, res) => {
     // Exact match mapping for metadata pre-filtering
     let domainFilter = null;
     const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('dining') || lowerMessage.includes('food')) domainFilter = 'Dining';
-    else if (lowerMessage.includes('library')) domainFilter = 'Library';
-    else if (lowerMessage.includes('it') || lowerMessage.includes('wifi')) domainFilter = 'IT/FAQ';
+
+    if (lowerMessage.includes('library')) domainFilter = 'Library';
+    else if (lowerMessage.includes('health') || lowerMessage.includes('immunization') || lowerMessage.includes('wellness')) domainFilter = 'Health';
+    else if (lowerMessage.includes('wifi') || lowerMessage.includes('print')) domainFilter = 'IT Support';
     else if (lowerMessage.includes('event')) domainFilter = 'Events';
-    else if (lowerMessage.includes('gym') || lowerMessage.includes('pool')) domainFilter = 'Rec/Pool';
+    else if (lowerMessage.includes('intramural') || /\brecreation\b/.test(lowerMessage)) domainFilter = 'Recreation';
+    else if (lowerMessage.includes('gym') || lowerMessage.includes('pool')) domainFilter = 'RecCenter';
+    else if (lowerMessage.includes('club') || lowerMessage.includes('organization')) domainFilter = 'Clubs';
+    else if (lowerMessage.includes('news') || lowerMessage.includes('marist circle')) domainFilter = 'News';
+    else if (lowerMessage.includes('directory') ||/\boffices?\b/.test(lowerMessage)) domainFilter = 'Admin';
 
     // Pass conversationId for correlation logging
     const retrievalResult = await retrievalService.search(message, domainFilter, activeConversationId);
@@ -60,13 +87,19 @@ const handleChat = async (req, res) => {
     }
 
     if (retrievalResult.chunks.length === 0) {
+      const thresholdApplied = retrievalResult.metadata?.threshold_applied ?? 0.55;
+    
       return res.status(422).json({
         success: false,
         data: null,
         error: {
           code: 'RETRIEVAL_FAILED',
-          message: 'Unable to find relevant information for your query.',
-          details: 'No chunks exceeded the similarity threshold of 0.70.'
+          message:
+            "I'm sorry, I couldn't find any specific campus information in my database to answer that accurately. Could you try rephrasing or asking about library hours, dining, or IT?",
+          details: `No chunks exceeded the similarity threshold of ${thresholdApplied}.`,
+          conversation_id: activeConversationId,
+          sources: [],
+          confidence: 'none'
         },
         metadata: {
           timestamp,
@@ -86,9 +119,9 @@ const handleChat = async (req, res) => {
     }));
 
     let confidence = 'low';
-    const topScore = retrievalResult.metadata.top_score;
-    if (topScore >= 0.85) confidence = 'high';
-    else if (topScore >= 0.75) confidence = 'medium';
+    const topScore = retrievalResult.metadata.top_score ?? 0;
+    if (topScore >= 0.75) confidence = 'high';
+    else if (topScore >= 0.65) confidence = 'medium';
 
     // Inject optional User Context
     const userContextStr = context && Object.keys(context).length > 0 

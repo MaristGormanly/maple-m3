@@ -32,11 +32,16 @@ const handleChat = async (req, res) => {
     // Exact match mapping for metadata pre-filtering
     let domainFilter = null;
     const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('dining') || lowerMessage.includes('food')) domainFilter = 'Dining';
-    else if (lowerMessage.includes('library')) domainFilter = 'Library';
-    else if (lowerMessage.includes('it') || lowerMessage.includes('wifi')) domainFilter = 'IT/FAQ';
+
+    if (lowerMessage.includes('library')) domainFilter = 'Library';
+    else if (lowerMessage.includes('health') || lowerMessage.includes('immunization') || lowerMessage.includes('wellness')) domainFilter = 'Health';
+    else if (lowerMessage.includes('wifi') || lowerMessage.includes('print')) domainFilter = 'IT Support';
     else if (lowerMessage.includes('event')) domainFilter = 'Events';
-    else if (lowerMessage.includes('gym') || lowerMessage.includes('pool')) domainFilter = 'Rec/Pool';
+    else if (lowerMessage.includes('intramural') || /\brecreation\b/.test(lowerMessage)) domainFilter = 'Recreation';
+    else if (lowerMessage.includes('gym') || lowerMessage.includes('pool')) domainFilter = 'RecCenter';
+    else if (lowerMessage.includes('club') || lowerMessage.includes('organization')) domainFilter = 'Clubs';
+    else if (lowerMessage.includes('news') || lowerMessage.includes('marist circle')) domainFilter = 'News';
+    else if (lowerMessage.includes('directory') ||/\boffices?\b/.test(lowerMessage)) domainFilter = 'Admin';
 
     // Pass conversationId for correlation logging
     const retrievalResult = await retrievalService.search(message, domainFilter, activeConversationId);

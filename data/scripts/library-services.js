@@ -5,8 +5,9 @@ const { chromium } = require('playwright');
 const { OpenAI } = require('openai');
 
 /**
- * MAPLE M3 Configuration
- * Supports local DGX Spark (Ollama) or OpenAI frontier models
+ * MAPLE M3 Library Deep Crawl
+ * This script discovers FAQ links across all specified LibGuide hubs
+ * and performs a deep extraction of each Q&A pair.
  */
 const USE_LOCAL = process.env.USE_LOCAL_MODEL === 'true';
 const openai = new OpenAI({
@@ -24,8 +25,17 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-// Constants from Spec Document
-const SOURCE_URL = 'https://marist.libanswers.com/search/';
+// Full list of LibGuide pages to scan for FAQ widgets
+const TARGET_GUIDES = [
+  'https://libguides.marist.edu/students',
+  'https://libguides.marist.edu/c.php?g=87344&p=8830695',
+  'https://libguides.marist.edu/c.php?g=87344&p=8830703',
+  'https://libguides.marist.edu/c.php?g=87344&p=8830706',
+  'https://libguides.marist.edu/c.php?g=87344&p=8830702',
+  'https://libguides.marist.edu/citation',
+  'https://libguides.marist.edu/plagiarism'
+];
+
 const SOURCE_TITLE = 'Marist Library FAQs';
 const SOURCE_TYPE = 'Library';
 
@@ -33,112 +43,113 @@ async function scrapeLibraryFAQs() {
   let browser;
   try {
     await client.connect();
-    console.log('Connected to database. Starting Library FAQ deep crawl...');
+    console.log('Connected to database. Initializing Discovery Phase...');
 
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({ 
-      ignoreHTTPSErrors: true,
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-    });
-    const page = await context.newPage();
+    const context = await browser.newContext();
+    const discoveryPage = await context.newPage();
 
-    // Navigate to the main directory
-    await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: 60000 });
+    let allFaqLinks = [];
 
-    // Wait for the search result list container
-    console.log('Waiting for search results list to load...');
-    await page.waitForSelector('#s-srch-results-0', { timeout: 20000 });
+    // PHASE 1: Discovery - Collect links pointing to /faq/ from all target hubs
+    for (const url of TARGET_GUIDES) {
+      console.log(`Scanning Hub: ${url}`);
+      try {
+        // Use 'networkidle' to ensure dynamic widgets have finished fetching data
+        await discoveryPage.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+        
+        // Wait for any link containing '/faq/' to appear, allowing for 15s delay
+        await discoveryPage.waitForSelector('a[href*="/faq/"]', { timeout: 15000 }).catch(() => {
+          console.log(`Warning: No FAQ links detected on ${url} within timeout.`);
+        });
 
-    // Extract FAQ links from the search results
-    const faqLinks = await page.evaluate(() => {
-      const linkElements = Array.from(document.querySelectorAll('.s-srch-result-title a'));
-      return linkElements.map(a => ({
-        title: a.innerText.trim(),
-        url: a.href
-      })).filter(link => link.url.includes('/faq/'));
-    });
-
-    if (faqLinks.length === 0) {
-      console.log('No FAQ links found. Verify selectors or search state.');
-      return;
+        const links = await discoveryPage.evaluate(() => {
+          // Broadly target all anchors that link to an FAQ sub-page
+          const anchorElements = Array.from(document.querySelectorAll('a[href*="/faq/"]'));
+          return anchorElements.map(a => ({
+            title: a.innerText.trim(),
+            url: a.href
+          })).filter(link => link.title.length > 0);
+        });
+        
+        allFaqLinks.push(...links);
+        console.log(`Successfully found ${links.length} potential FAQs on ${url}`);
+      } catch (e) {
+        console.error(`Discovery Phase encountered an error on ${url}: ${e.message}`);
+      }
     }
 
-    console.log(`Found ${faqLinks.length} FAQ entries. Starting deep crawl for metadata...`);
+    // Deduplicate discovered URLs to prevent redundant API calls and database entries
+    const uniqueFaqList = Array.from(new Set(allFaqLinks.map(f => f.url)))
+      .map(url => allFaqLinks.find(f => f.url === url));
 
-    for (let i = 0; i < faqLinks.length; i++) {
-      const faq = faqLinks[i];
+    console.log(`Discovery Phase Complete. ${uniqueFaqList.length} unique FAQs queued for Deep Extraction.`);
+
+    // PHASE 2: Extraction - Visit each unique FAQ detail page
+    for (let i = 0; i < uniqueFaqList.length; i++) {
+      const faq = uniqueFaqList[i];
       const detailPage = await context.newPage();
       
       try {
-        console.log(`[Deep Crawl ${i + 1}/${faqLinks.length}] Visiting: ${faq.title}`);
-        await detailPage.goto(faq.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        console.log(`[Deep Crawl ${i + 1}/${uniqueFaqList.length}] Extracting: ${faq.title}`);
+        await detailPage.goto(faq.url, { waitUntil: 'domcontentloaded' });
 
         const faqData = await detailPage.evaluate(() => {
-          // Updated Answer Selector: targeting .s-la-faq-answer-body as per the DOM breakdown
+          // Extraction logic based on the LibAnswers detail page structure
           const question = document.querySelector('.s-la-faq-q-title, #s-la-content-header h1')?.innerText.trim();
           const answer = document.querySelector('.s-la-faq-answer-body')?.innerText.trim();
-          
-          // Metadata extraction
           const lastUpdated = document.querySelector('.s-la-faq-meta, .s-la-faq-last-update')?.innerText.replace('Last Updated:', '').trim();
-          const staff = document.querySelector('.s-la-faq-owner, .s-la-faq-author')?.innerText.trim();
-          const topics = Array.from(document.querySelectorAll('.s-la-faq-topics a, .s-la-faq-topic-list a'))
-            .map(t => t.innerText.trim());
 
-          return { question, answer, lastUpdated, staff, topics };
+          return { question, answer, lastUpdated };
         });
 
-        // Transform into structured JSON (Design Doc requirement for reducing hallucinations)
+        if (!faqData.answer) {
+          console.log(`Skipping ${faq.url}: No visible answer content found.`);
+          continue;
+        }
+
+        // Map data to the MAPLE M3 JSON structure
         const chunkContent = JSON.stringify({
           question: faqData.question || faq.title,
-          answer_text: faqData.answer || "Answer content not found at the expected selector.",
+          answer_text: faqData.answer,
           metadata: {
-            topics: faqData.topics,
+            source_url: faq.url,
             last_updated: faqData.lastUpdated,
-            answered_by: faqData.staff,
-            source_url: faq.url
+            source_type: 'Library FAQ'
           }
         });
 
-        // Generate embeddings for the unified chunk
+        // Generate vector embeddings for the RAG pipeline
         const embeddingResponse = await openai.embeddings.create({
           model: embedModel, 
           input: chunkContent,
         });
         const embeddingVector = embeddingResponse.data[0].embedding;
 
-        // Insert into Documents Table (Relational Entity)
-        const docInsertQuery = `
+        // Insert into the relational 'Documents' table
+        const docResult = await client.query(`
           INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content, last_updated)
           VALUES ($1, $2, $3, $4, $5, NOW())
           RETURNING doc_id;
-        `;
-        const docResult = await client.query(docInsertQuery, [
-          SOURCE_TITLE,
-          faq.url,
-          SOURCE_TYPE,
-          i,
-          chunkContent
-        ]);
+        `, [SOURCE_TITLE, faq.url, SOURCE_TYPE, i, chunkContent]);
+        
         const docId = docResult.rows[0].doc_id;
 
-        // Insert into DocumentEmbeddings Table (Vector Entity)
+        // Insert into the 'DocumentEmbeddings' vector store
         const vectorString = `[${embeddingVector.join(',')}]`;
-        const vectorInsertQuery = `
-          INSERT INTO DocumentEmbeddings (doc_id, embedding)
+        await client.query(`
+          INSERT INTO DocumentEmbeddings (doc_id, embedding) 
           VALUES ($1, $2);
-        `;
-        await client.query(vectorInsertQuery, [docId, vectorString]);
-
-        console.log(`Successfully ingested: ${faq.title}`);
+        `, [docId, vectorString]);
 
       } catch (innerError) {
-        console.error(`Error processing FAQ ${faq.url}:`, innerError.message);
+        console.error(`Deep Extraction failed for FAQ ${faq.url}:`, innerError.message);
       } finally {
-        await detailPage.close().catch(() => {});
+        await detailPage.close();
       }
     }
 
-    console.log('Library FAQ ingestion complete!');
+    console.log('Library FAQ Ingestion and Vectorization completed successfully.');
 
   } catch (error) {
     console.error('Fatal Error during scraping/ingestion:', error);

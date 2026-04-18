@@ -1,0 +1,17 @@
+Goal: Develop a custom scraper script for the campus-events that integrates seamlessly into the MAPLE Campus Services & Student Life Navigator. 
+The objective was to extract structured data while maintaining architectural consistency. 
+
+AI Tool Used: Google Gemini
+
+Prompts Used:
+This is my spec document: # **MAPLE Campus Services & Student Life Navigator** 
+Attached: init.js, admin-directory.js
+Create a scraper script for caampus events at https://www.marist.edu/daily-events. Follow the same format as the library.js and 
+library-services.js scripts. Make sure to follow the guidelines in the spec document.
+
+Results & Refinements:
+The AI generated a admin-directory.js but it was not perfect. Had to look into the html source further to debug.
+"[dotenv@17.3.1] injecting env (6) from .env -- tip: 🤖 agentic secret storage: https://dotenvx.com/as2
+Connected to database. Starting Campus Events scrape with Playwright...
+No event data could be extracted from the page."
+Was able to debug and get correct output.

@@ -69,6 +69,7 @@ const retrievalService = {
   async search(query, domainFilter = null, conversationId = 'unknown') {
     const SIMILARITY_THRESHOLD = 0.55; 
     const TOP_K = 5;
+    const startTime = Date.now();
 
     try {
       const embeddingResponse = await openai.embeddings.create({
@@ -106,10 +107,14 @@ const retrievalService = {
       logger.logRetrieval({
         conversation_id: conversationId,
         query: query,
+        model: embedModel,
         chunks_retrieved: chunks.length,
         top_score: topScore,
         min_score: minScore,
-        threshold_applied: SIMILARITY_THRESHOLD
+        threshold_applied: SIMILARITY_THRESHOLD,
+        latency_ms: Date.now() - startTime,
+        success: true,
+        error: null
       });
 
       return {
@@ -119,7 +124,18 @@ const retrievalService = {
       };
 
     } catch (error) {
-      logger.logError({ source: 'retrievalService', message: error.message });
+      logger.logRetrieval({
+        conversation_id: conversationId,
+        query: query,
+        model: embedModel,
+        chunks_retrieved: 0,
+        top_score: null,
+        min_score: null,
+        threshold_applied: SIMILARITY_THRESHOLD,
+        latency_ms: Date.now() - startTime,
+        success: false,
+        error: error.message
+      });
       return {
         success: false,
         chunks: [],

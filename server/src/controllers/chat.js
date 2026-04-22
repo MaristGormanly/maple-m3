@@ -4,18 +4,22 @@
  * Orchestrates the full RAG pipeline for a single POST /api/v1/campus/chat request:
  *  1. Validates the incoming message field
  *  2. Assigns or inherits a conversation_id for multi-turn context tracking
- *  3. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
+ *  3. Fetches the last 5 turns from ChatHistory for the active conversation_id
+ *     and prepends them to the LLM messages array so the model has memory of
+ *     prior exchanges within the same session
+ *  4. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
  *     to narrow the vector search before embedding
- *  4. Calls retrievalService.search() to embed the query and fetch the top-k chunks
+ *  5. Calls retrievalService.search() to embed the query and fetch the top-k chunks
  *     from PostgreSQL + pgvector above the configured similarity threshold
- *  5. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
+ *  6. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
  *     bypassing the LLM entirely to prevent hallucination
- *  6. Calculates a confidence level (high / medium / low) from the top retrieval score
- *  7. Injects retrieved chunks and the current timestamp into the system prompt loaded
+ *  7. Calculates a confidence level (high / medium / low) from the top retrieval score
+ *  8. Injects retrieved chunks and the current timestamp into the system prompt loaded
  *     from prompts/system/main-system-prompt.md (loaded dynamically per request)
- *  8. Calls llmService.complete() and handles AI_ERROR (502) on failure
- *  9. Persists the query and AI response to the ChatHistory table
- * 10. Returns the MAPLE standard response envelope with response, conversation_id,
+ *  9. Calls llmService.complete() with the full history + current message array
+ *     and handles AI_ERROR (502) on failure
+ * 10. Persists the query and AI response to the ChatHistory table
+ * 11. Returns the MAPLE standard response envelope with response, conversation_id,
  *     sources[], confidence, and metadata (model, latency_ms)
  *
  * All error paths return a MAPLE-compliant error envelope (success: false).
@@ -50,6 +54,9 @@ const handleChat = async (req, res) => {
     }
 
     const activeConversationId = conversation_id || `conv_${Date.now()}`;
+
+    // Acquire the pool once and reuse it for both the history fetch and the final write
+    const pool = retrievalService.getDbPool();
 
     // Exact match mapping for metadata pre-filtering
     let domainFilter = null;
@@ -135,9 +142,33 @@ const handleChat = async (req, res) => {
       .replace('{{CURRENT_TIMESTAMP}}', currentTimestamp)
       .replace('{{CONTEXT}}', contextText + userContextStr);
 
+    // Load prior turns so the LLM can answer follow-up questions in context.
+    // Only fetched when the client sends back an existing conversation_id (i.e. not
+    // the first message). Capped at 5 prior exchanges to keep token usage bounded.
+    // Failure to load history degrades gracefully — the request continues without it.
+    let historyMessages = [];
+    if (conversation_id) {
+      try {
+        const historyResult = await pool.query(
+          `SELECT query_message, ai_response
+           FROM ChatHistory
+           WHERE conversation_id = $1
+           ORDER BY timestamp ASC
+           LIMIT 5`,
+          [activeConversationId]
+        );
+        for (const row of historyResult.rows) {
+          historyMessages.push({ role: 'user',      content: row.query_message });
+          historyMessages.push({ role: 'assistant', content: row.ai_response  });
+        }
+      } catch (histErr) {
+        console.error('Failed to load conversation history:', histErr.message);
+      }
+    }
+
     const llmResult = await llmService.complete({
       systemPrompt,
-      messages: [{ role: 'user', content: message }],
+      messages: [...historyMessages, { role: 'user', content: message }],
       conversationId: activeConversationId
     });
 
@@ -160,8 +191,7 @@ const handleChat = async (req, res) => {
       });
     }
 
-    // Persist with conversation_id safely
-    const pool = retrievalService.getDbPool();
+    // Persist this turn so it is available as history for future requests
     try {
       await pool.query(`
         INSERT INTO ChatHistory (conversation_id, query_message, ai_response) 

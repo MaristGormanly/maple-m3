@@ -19,7 +19,7 @@ const router = express.Router();
 const { exec } = require('child_process');
 const path = require('path');
 const { handleChat } = require('../controllers/chat');
-const { apiLimiter } = require('../middleware/security');
+const { apiLimiter, requireAdminToken } = require('../middleware/security');
 const retrievalService = require('../services/retrieval');
 
 // Helper to extract structured event data from the raw scraped text chunks
@@ -86,8 +86,8 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// Trigger actual data ingestion pipeline script
-router.post('/ingest', (req, res) => {
+// Trigger actual data ingestion pipeline script (Admin token required)
+router.post('/ingest', requireAdminToken, (req, res) => {
   const timestamp = new Date().toISOString();
   const { source_type } = req.body;
   

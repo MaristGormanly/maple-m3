@@ -1,7 +1,7 @@
 # MAPLE M3 — API Specification
 
-**Module:** M3: Campus Services & Student Life Navigator  
-**Base path:** `/api/v1/campus`  
+**Module:** M3: Campus Services & Student Life Navigator
+**Base path:** `/api/v1/campus`
 **Envelope:** All responses follow the MAPLE standard JSON envelope (`success`, `data`, `error`, `metadata`).
 
 ---
@@ -28,12 +28,14 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 
 **Rate limit:** 30 requests per IP per minute.
 
+> **Dining intercept:** Queries detected as dining-related (keywords: `dining`, `cafeteria`, specific location names such as `halal shack`, `saxbys`, etc., or broad food terms like `lunch`/`dinner` co-occurring with operational context words like `open`/`hours`) are intercepted **before** the RAG pipeline and return hardcoded typical semester hours plus live links to `dineoncampus.com/marist`. These responses have `confidence: "high"` and `model: "hardcoded"`.
+
 **Request body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `message` | string | yes | The student's natural language query |
-| `conversation_id` | string | no | Existing conversation ID for multi-turn context |
+| `conversation_id` | string | no | Existing conversation ID for multi-turn context. When provided, the last 5 turns are loaded from `ChatHistory` and prepended to the LLM messages array. |
 | `context` | object | no | Optional user profile data (e.g. major, year) to personalize the response |
 
 **Example request**
@@ -73,7 +75,7 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 }
 ```
 
-**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.65) | `"low"` (below 0.65)
+**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.65) | `"low"` (below 0.65) | `"none"` (retrieval failed)
 
 **Error responses**
 
@@ -113,13 +115,13 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 
 ## `GET /api/v1/campus/status`
 
-Returns recently ingested campus events from the `Documents` table (`source_type = 'Events'`). Supports optional date-based filtering. Returns up to 10 records, ordered by most recently ingested.
+Returns recently ingested campus events from the `Documents` table (`source_type = 'Events'`). Supports optional date-based filtering. Returns up to 10 records ordered by most recently ingested.
 
 **Query parameters**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `date` | string (`YYYY-MM-DD`) | no | Filter to events ingested on a specific date. If omitted, returns the 10 most recent event records. |
+| `date` | string (`YYYY-MM-DD`) | no | Filter to events ingested on a specific date. Must match the `YYYY-MM-DD` format exactly. If omitted, returns the 10 most recent event records. |
 
 **Response — 200 OK**
 ```json
@@ -146,6 +148,7 @@ Returns recently ingested campus events from the `Documents` table (`source_type
 
 | HTTP | `error.code` | Condition |
 |---|---|---|
+| 400 | `VALIDATION_ERROR` | `date` parameter is present but not in `YYYY-MM-DD` format |
 | 500 | `INTERNAL_ERROR` | Database query failed |
 
 ---
@@ -154,13 +157,19 @@ Returns recently ingested campus events from the `Documents` table (`source_type
 
 Triggers a background data ingestion and vectorization pipeline script. Returns immediately (HTTP 202) while the job runs asynchronously.
 
-**MVP scope (Lab 2):** Only `source_type: "Admin"` is supported via this endpoint. All other domain ingestion is run directly via the scripts in `data/scripts/`.
+**Authentication:** Requires a Bearer token in the `Authorization` header matching the `ADMIN_TOKEN` environment variable.
+
+```
+Authorization: Bearer <ADMIN_TOKEN>
+```
+
+**MVP scope:** Only `source_type: "Admin"` is supported via this endpoint. All other domain ingestion is run directly via the scripts in `data/scripts/`. Dining data is not ingested — it is served from hardcoded semester hours in `server/src/utils/dining.js`.
 
 **Request body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `source_type` | string | yes | The domain to ingest. Only `"Admin"` is accepted for MVP. |
+| `source_type` | string | yes | The domain to ingest. Only `"Admin"` is accepted. |
 
 **Example request**
 ```json
@@ -191,3 +200,5 @@ Triggers a background data ingestion and vectorization pipeline script. Returns 
 | HTTP | `error.code` | Condition |
 |---|---|---|
 | 400 | `VALIDATION_ERROR` | `source_type` is missing or not `"Admin"` |
+| 401 | `UNAUTHORIZED` | `Authorization` header is absent or not in `Bearer` format |
+| 403 | `FORBIDDEN` | Bearer token does not match `ADMIN_TOKEN` |

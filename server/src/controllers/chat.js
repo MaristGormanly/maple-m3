@@ -9,6 +9,8 @@
  *     prior exchanges within the same session
  *  4. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
  *     to narrow the vector search before embedding
+ *  4a. Intercepts dining queries before RAG and returns hardcoded typical semester
+ *     hours or a menu link (dineoncampus.com is Cloudflare-protected; no scraping)
  *  5. Calls retrievalService.search() to embed the query and fetch the top-k chunks
  *     from PostgreSQL + pgvector above the configured similarity threshold
  *  6. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
@@ -28,6 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const retrievalService = require('../services/retrieval');
 const llmService = require('../services/llm');
+const diningUtils = require('../utils/dining');
 
 function resolveLlmModelName() {
   return process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
@@ -71,6 +74,29 @@ const handleChat = async (req, res) => {
     else if (lowerMessage.includes('club') || lowerMessage.includes('organization')) domainFilter = 'Clubs';
     else if (lowerMessage.includes('news') || lowerMessage.includes('marist circle')) domainFilter = 'News';
     else if (lowerMessage.includes('directory') ||/\boffices?\b/.test(lowerMessage)) domainFilter = 'Admin';
+
+    // Dining queries are intercepted before RAG since dineoncampus.com is protected
+    // by Cloudflare and automated scraping is unreliable. Hardcoded typical semester
+    // hours and official links are returned directly without hitting the LLM.
+    if (diningUtils.isDiningQuery(lowerMessage)) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          response: diningUtils.getDiningResponse(lowerMessage),
+          conversation_id: activeConversationId,
+          sources: diningUtils.DINING_SOURCES,
+          confidence: 'high'
+        },
+        error: null,
+        metadata: {
+          timestamp,
+          module: 'm3',
+          version: MAPLE_VERSION,
+          model: 'hardcoded',
+          latency_ms: 0
+        }
+      });
+    }
 
     // Pass conversationId for correlation logging
     const retrievalResult = await retrievalService.search(message, domainFilter, activeConversationId);

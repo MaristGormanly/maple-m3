@@ -11,7 +11,7 @@
  *  POST /ingest  → inline handler; triggers the admin-directory.js scraping script
  *                  asynchronously and returns a 202 with a job ID (MVP: Admin only)
  *
- * Note: /ingest accepts only source_type='Admin' for the Lab 2 MVP. All other domain
+ * Note: /ingest accepts only source_type='Admin' for the MVP. All other domain
  * ingestion is run directly via the scripts in data/scripts/.
  */
 const express = require('express');
@@ -42,6 +42,16 @@ router.get('/status', async (req, res) => {
   const timestamp = new Date().toISOString();
   try {
     const { date } = req.query; // filters by ingest date (last_updated), e.g. ?date=2026-04-15
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'date parameter must be in YYYY-MM-DD format.' },
+        metadata: { timestamp, module: 'm3', version: '1.0.0' }
+      });
+    }
+
     const pool = retrievalService.getDbPool();
     
     let queryText = '';
@@ -77,10 +87,11 @@ router.get('/status', async (req, res) => {
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });
   } catch (err) {
+    console.error('[/status] Database query failed:', err.message);
     res.status(500).json({ 
       success: false, 
       data: null, 
-      error: { code: 'INTERNAL_ERROR', message: 'Database query failed: ' + err.message },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve events.' },
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });
   }

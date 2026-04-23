@@ -1,7 +1,7 @@
 # MAPLE M3 — Design Doc Reconciliation
 
 **Module:** M3: Campus Services & Student Life Navigator  
-**Design Doc:** [MAPLE_M3 Project Design Doc.md](./MAPLE_M3%20Project%20Design%20Doc.md)  
+**Updated Design Doc:** [MAPLE_M3 Project Design Doc.md](./MAPLE_M3%20Project%20Design%20Doc.md)  
 **Milestone:** Final Project Submission — Spring 2026
 
 This document traces every significant decision from the original design doc through the updated design doc and into the final implemented MVP. For each area, it records what was originally planned, what changed (and when), and the rationale behind each evolution. Items are rated as **Confirmed**, **Evolved**, or **Descoped**.
@@ -28,15 +28,15 @@ This document traces every significant decision from the original design doc thr
 
 **Rationale:** Creating a separate relational table for events would require a custom scraping schema that maps parsed event fields to table columns. The chunk-based approach is simpler to maintain, already supports the required metadata fields (`title`, `location`, `start_time`), and is consistent with how all other domains are handled. The `ChatHistory` table also received a new `conversation_id` column (absent from the original schema) to support multi-turn context retrieval.
 
-### Deployment Target — Confirmed
+### Deployment Target — Evolved
 
 **Original:** DigitalOcean App Platform with managed PostgreSQL and HTTPS at `m3.maristchat.com`.  
-**Implemented:** Same target. Secrets managed via host environment variables; `.env` gitignored; `.env.example` provided.
+**Implemented:** The application runs locally. The backend (`server/`) and frontend (`client/`) are both started on the local machine. Secrets are managed via a local `.env` file (gitignored); `.env.example` is provided as the template.
 
 ### Infrastructure Cost — Evolved
 
 **Original:** Estimated ~$50/month assuming cloud-hosted frontier model and OpenAI embeddings.  
-**Updated & Implemented:** ~$25/month. By using the campus NVIDIA DGX Spark (via Ollama) for both generation (`llama3.1:8b`) and embeddings (`nomic-embed-text`), cloud AI costs drop to $0. Only App Platform compute ($10) and managed PostgreSQL ($15) remain.
+**Implemented:** $0/month. By running entirely locally and using the campus NVIDIA DGX Spark (via Ollama) for both generation (`llama3.1:8b`) and embeddings (`nomic-embed-text`), there are no cloud compute or AI API costs.
 
 ---
 

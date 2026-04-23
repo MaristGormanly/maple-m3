@@ -98,7 +98,7 @@ npm start
 
 ## Deployment
 
-Target deployment is DigitalOcean App Platform with managed PostgreSQL (`pgvector`) and HTTPS (`m3.maristchat.com`), with all secrets stored as host environment variables — never in committed `.env` files.
+MAPLE M3 runs locally. Start the backend with `npm start` inside `server/` and the frontend with `ng serve` (or `npm start`) inside `client/`. All secrets are stored in a local `.env` file (gitignored); use `.env.example` as the template — never commit real credentials.
 
 ## Evaluation
 

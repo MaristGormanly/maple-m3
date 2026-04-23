@@ -506,28 +506,28 @@ We will demonstrate this improvement across three key axes:
 
 **Frontend & Backend Separation**: In accordance with MAPLE technical conventions, the module is architected as two distinct services: an Angular frontend residing in the `/client` directory and a Node.js/Express backend in the `/server` directory.
 
-**DigitalOcean App Platform**: Both services will be deployed using the DigitalOcean App Platform. To ensure High Availability and meet the requirements for stable, deployable code, the backend will utilize two shared container instances. This configuration enables zero-downtime rolling deployments and redundancy against single-container failures.
+**Local Deployment**: Both services run locally on the developer's machine — the Angular frontend (`/client`) via `ng serve` and the Node.js/Express backend (`/server`) via `npm start`. No cloud hosting or container orchestration is required.
 
-**Managed Database**: Application state and vector embeddings will be stored in a Managed PostgreSQL instance with the pgvector extension enabled. 
+**Local Database**: Application state and vector embeddings are stored in a local PostgreSQL instance with the `pgvector` extension enabled.
 
-## Domain, TLS, & Security Baseline
+## Local Runtime & Security Baseline
 
-**Custom Domain & HTTPS**: The module will be accessible via a dedicated subdomain `m3.maristchat.com`. In compliance with the MAPLE security baseline, we will use DigitalOcean’s native Let’s Encrypt integration to enforce HTTPS only for all production traffic.
+**Local Access**: The module is used locally during this phase (`http://localhost:4200` for frontend with backend API on local server port). Because the deployment target is local-only, no public domain or cloud TLS setup is required.
 
-**Environment Management**: All sensitive configurations, specifically frontier model API keys, will be managed by DigitalOcean Environment Variables. No secrets will be committed to the repository, and local development will rely on a `.env` file that is excluded using `.gitignore`.
+**Environment Management**: All sensitive configurations (API keys, database credentials, admin token) are stored in a local `.env` file excluded from version control via `.gitignore`. The repository includes `.env.example` as the setup template.
 
 **Rate Limiting**: To prevent accidental cost spikes and ensure availability during the pilot, we will implement a per-IP rate limit of 30 requests per minute on the `/chat` endpoint.
 
 | Service | Plan / Quantity | Monthly Cost |
 | :---- | :---- | :---- |
-| **App Platform (Compute)** | 2x Shared Containers ($5.00/each) | $10.00 |
-| **Managed PostgreSQL** | Basic Node (1GB RAM / 10GB Disk) | $15.00 |
+| **Cloud Hosting (Compute)** | Not used (local deployment) | $0.00 |
+| **Managed PostgreSQL** | Not used (local PostgreSQL with `pgvector`) | $0.00 |
 | **AI Generation API** | Local Inference (DGX Spark via Ollama) | $0.00 |
 | **Embedding API** | nomic-embed-text | $0.00 |
-| **TLS/SSL & DNS** | Managed Certificates & Subdomain | $0.00 |
-| **Total** |  | **$45.00** |
+| **TLS/SSL & DNS** | Not required for local-only runtime | $0.00 |
+| **Total** |  | **$0.00** |
 
-**Cost Mitigation Strategy**: To stay within this budget, we enforce the active calibrated retrieval threshold (`0.55` in the current build, with `0.70` retained as the stricter design baseline). If no relevant campus data is retrieved, the system will return a standard `RETRIEVAL\_FAILED` error rather than incurring LLM generation costs for ungrounded queries.
+**Cost Mitigation Strategy**: To keep runtime resource usage controlled, we enforce the active calibrated retrieval threshold (`0.55` in the current build, with `0.70` retained as the stricter design baseline). If no relevant campus data is retrieved, the system returns a standard `RETRIEVAL\_FAILED` error rather than invoking generation for ungrounded queries.
 
 # **Risk Assessment & Mitigation**
 

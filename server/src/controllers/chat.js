@@ -31,6 +31,7 @@ const path = require('path');
 const retrievalService = require('../services/retrieval');
 const llmService = require('../services/llm');
 const diningUtils = require('../utils/dining');
+const { evaluateDataFreshness } = require('../utils/dataFreshness');
 
 function resolveLlmModelName() {
   return process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
@@ -79,13 +80,21 @@ const handleChat = async (req, res) => {
     // by Cloudflare and automated scraping is unreliable. Hardcoded typical semester
     // hours and official links are returned directly without hitting the LLM.
     if (diningUtils.isDiningQuery(lowerMessage)) {
+      const diningFreshness = {
+        status: 'aging',
+        warning: 'Dining information reflects typical semester schedules and may change during holidays or special events. Please verify details on official Marist dining pages.',
+        oldest_source_age_hours: null,
+        stale_sources: []
+      };
+
       return res.status(200).json({
         success: true,
         data: {
           response: diningUtils.getDiningResponse(lowerMessage),
           conversation_id: activeConversationId,
           sources: diningUtils.DINING_SOURCES,
-          confidence: 'high'
+          confidence: 'high',
+          freshness: diningFreshness
         },
         error: null,
         metadata: {
@@ -144,6 +153,7 @@ const handleChat = async (req, res) => {
     }
 
     const chunks = retrievalResult.chunks;
+    const freshness = evaluateDataFreshness(chunks);
     const sources = chunks.map(chunk => ({
       title: chunk.source_title,
       url: chunk.source_url, 
@@ -233,7 +243,8 @@ const handleChat = async (req, res) => {
         response: llmResult.content,
         conversation_id: activeConversationId,
         sources: sources,
-        confidence: confidence
+        confidence: confidence,
+        freshness
       },
       error: null,
       metadata: {

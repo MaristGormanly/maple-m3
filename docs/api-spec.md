@@ -24,11 +24,11 @@
 
 ## `POST /api/v1/campus/chat`
 
-Primary RAG chat endpoint. Accepts a student's natural language query, performs vector retrieval against ingested campus data, and returns an AI-generated response with source attribution and a confidence rating.
+Primary RAG chat endpoint. Accepts a student's natural language query, performs vector retrieval against ingested campus data, and returns an AI-generated response with source attribution, a confidence rating, and data freshness metadata.
 
 **Rate limit:** 30 requests per IP per minute.
 
-> **Dining intercept:** Queries detected as dining-related (keywords: `dining`, `cafeteria`, specific location names such as `halal shack`, `saxbys`, etc., or broad food terms like `lunch`/`dinner` co-occurring with operational context words like `open`/`hours`) are intercepted **before** the RAG pipeline and return hardcoded typical semester hours plus live links to `dineoncampus.com/marist`. These responses have `confidence: "high"` and `model: "hardcoded"`.
+> **Dining intercept:** Queries detected as dining-related (keywords: `dining`, `cafeteria`, specific location names such as `halal shack`, `saxbys`, etc., or broad food terms like `lunch`/`dinner` co-occurring with operational context words like `open`/`hours`) are intercepted **before** the RAG pipeline and return hardcoded typical semester hours plus live links to `dineoncampus.com/marist`. These responses have `confidence: "high"`, `model: "hardcoded"`, and include a `freshness` object with a user-facing caution that dining data may change during holidays or special events.
 
 **Request body**
 
@@ -62,7 +62,13 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
         "relevance_score": 0.8214
       }
     ],
-    "confidence": "high"
+    "confidence": "high",
+    "freshness": {
+      "status": "fresh",
+      "warning": null,
+      "oldest_source_age_hours": 12.4,
+      "stale_sources": []
+    }
   },
   "error": null,
   "metadata": {
@@ -76,6 +82,26 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 ```
 
 **`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.65) | `"low"` (below 0.65) | `"none"` (retrieval failed)
+
+**`freshness.status` values:** `"fresh"` (all retrieved chunks within freshness thresholds) | `"aging"` (approaching threshold) | `"stale"` (one or more chunks exceed thresholds) | `"unknown"` (missing/unparseable timestamp data)
+
+**`freshness` object (200 responses):**
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | Freshness state: `fresh`, `aging`, `stale`, or `unknown` |
+| `warning` | string \| null | User-facing warning message when staleness or uncertainty is detected |
+| `oldest_source_age_hours` | number \| null | Age in hours of the oldest retrieved source timestamp |
+| `stale_sources` | array | Sources that exceeded stale threshold |
+
+**`stale_sources[]` item shape:**
+
+| Field | Type | Description |
+|---|---|---|
+| `title` | string | Source title |
+| `source_type` | string | Source domain/category (`Events`, `Library`, etc.) |
+| `age_hours` | number | Current source age in hours |
+| `stale_after_hours` | number | Threshold after which source is considered stale |
 
 **Error responses**
 

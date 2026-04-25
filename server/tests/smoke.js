@@ -64,6 +64,7 @@ async function run() {
     assert(typeof body.data.response === 'string', 'Expected data.response to be a string');
     assert(Array.isArray(body.data.sources), 'Expected data.sources to be an array');
     assert(['high','medium','low','none'].includes(body.data.confidence), 'Invalid confidence value');
+    assert(['fresh','aging','stale','unknown'].includes(body.data.freshness?.status), 'Invalid freshness status');
   });
 
   // /chat missing message

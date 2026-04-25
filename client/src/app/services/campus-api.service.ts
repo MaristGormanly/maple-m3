@@ -52,6 +52,7 @@ export class CampusApiService {
           content: res.data.response,
           sources: res.data.sources,
           confidence: res.data.confidence,
+          freshness: res.data.freshness,
           conversationId: res.data.conversation_id, // Extract backend's ID
           isError: false
         } as ChatMessage;

@@ -22,12 +22,29 @@ export interface ChatSource {
     chunk_id: string;
     relevance_score: number;
   }
+
+  export type FreshnessStatus = 'fresh' | 'aging' | 'stale' | 'unknown';
+
+  export interface StaleSource {
+    title: string;
+    source_type: string;
+    age_hours: number;
+    stale_after_hours: number;
+  }
+
+  export interface DataFreshness {
+    status: FreshnessStatus;
+    warning: string | null;
+    oldest_source_age_hours: number | null;
+    stale_sources: StaleSource[];
+  }
   
   export interface ChatResponseData {
     response: string;
     conversation_id: string;
     sources: ChatSource[];
     confidence: 'high' | 'medium' | 'low' | 'none';
+    freshness?: DataFreshness;
   }
   
   export interface MapleError {
@@ -57,6 +74,7 @@ export interface ChatSource {
     content: string;
     sources?: ChatSource[];
     confidence?: 'high' | 'medium' | 'low' | 'none';
+    freshness?: DataFreshness;
     conversationId?: string;
     isError?: boolean;
   }

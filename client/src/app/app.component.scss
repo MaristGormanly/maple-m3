@@ -133,6 +133,24 @@
     &.medium { background: #fff3e0; color: #e65100; }
     &.low, &.none { background: #ffebee; color: #c62828; }
   }
+
+  .freshness-warning {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-left: 4px solid #f57c00;
+    background: #fff8e1;
+    color: #7a3e00;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    line-height: 1.4;
+  }
+
+  .freshness-meta {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.8rem;
+    opacity: 0.9;
+  }
   
   // Source Attribution
   .sources-list {

@@ -4,7 +4,7 @@
   Three-section layout (flex column, full viewport height):
 
   <header class="chat-header">
-    Marist-branded top bar with the MAPLE logo and module subtitle.
+    Top bar with the MAPLE logo and module subtitle.
 
   <main class="chat-window" #scrollMe>
     Scrollable message list. Iterates over messages[] and renders each turn as a
@@ -48,6 +48,14 @@
             <span class="icon" *ngIf="msg.confidence === 'medium'">⚠️</span>
             <span class="icon" *ngIf="msg.confidence === 'low' || msg.confidence === 'none'">❌</span>
             {{ msg.confidence | uppercase }} CONFIDENCE
+          </div>
+
+          <!-- Freshness Warning (Assistant Only) -->
+          <div class="freshness-warning" *ngIf="msg.role === 'assistant' && msg.freshness?.warning && !msg.isError">
+            <strong>Data Freshness Notice:</strong> {{ msg.freshness?.warning }}
+            <span class="freshness-meta" *ngIf="msg.freshness?.oldest_source_age_hours !== null">
+              (Oldest source age: {{ msg.freshness?.oldest_source_age_hours }}h)
+            </span>
           </div>
   
           <!-- Source Attribution (Assistant Only) -->

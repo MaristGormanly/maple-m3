@@ -17,12 +17,11 @@
  *   1st of month at 6:30 AM → node data/scripts/run-ingestion-batch.js monthly
  *
  * Batches:
- *   daily   — campus-events, news
- *   weekly  — admin-directory, clubs, library, library-services, health-services, it-helpdesk, intramurals
- *   monthly — it-clientTech
+ *   daily   — campus-events, news, library, intramurals
+ *   weekly  — admin-directory, clubs, health-services, it-helpdesk
+ *   monthly — library-services, it-clientTech
  *
- * Scripts excluded from automation (add once stable/ready):
- *   gym-pool.js     — script not yet stable; to be added after team fixes
+ * Scripts excluded from automation:
  *   dining-hours.js — hardcoded fallback in server/src/utils/dining.js (Cloudflare blocks scraping)
  *   dining-menus.js — same reason; redirect to live site provided instead
  */
@@ -41,17 +40,18 @@ const BATCHES = {
   daily: [
     'campus-events.js',
     'news.js',
-  ],
+    'library.js',
+    'intramurals.js',
+  ],  
   weekly: [
     'admin-directory.js',
     'clubs.js',
-    'library.js',
-    'library-services.js',
     'health-services.js',
     'it-helpdesk.js',
-    'intramurals.js',
+    'gym-pool.js',
   ],
   monthly: [
+    'library-services.js',
     'it-clientTech.js',
   ],
 };

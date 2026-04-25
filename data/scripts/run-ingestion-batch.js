@@ -9,17 +9,17 @@
  *   node data/scripts/run-ingestion-batch.js               # runs the default "daily" batch
  *   node data/scripts/run-ingestion-batch.js daily         # same as above
  *   node data/scripts/run-ingestion-batch.js weekly        # runs the weekly batch
- *   node data/scripts/run-ingestion-batch.js midweek       # runs the mid-week batch
+ *   node data/scripts/run-ingestion-batch.js monthly       # runs the monthly batch
  *
  * Schedule (Windows Task Scheduler — see data/scripts/cron-schedule.md):
  *   Daily at 5:00 AM      →  node data/scripts/run-ingestion-batch.js daily
- *   Mon/Wed/Fri at 5:30AM →  node data/scripts/run-ingestion-batch.js midweek
  *   Sunday at 6:00 AM     →  node data/scripts/run-ingestion-batch.js weekly
+ *   1st of month at 6:30 AM → node data/scripts/run-ingestion-batch.js monthly
  *
  * Batches:
  *   daily   — campus-events, news
- *   midweek — admin-directory, clubs
- *   weekly  — library, library-services, health-services, it-helpdesk, intramurals
+ *   weekly  — admin-directory, clubs, library, library-services, health-services, it-helpdesk, intramurals
+ *   monthly — it-clientTech
  *
  * Scripts excluded from automation (add once stable/ready):
  *   gym-pool.js     — script not yet stable; to be added after team fixes
@@ -42,16 +42,17 @@ const BATCHES = {
     'campus-events.js',
     'news.js',
   ],
-  midweek: [
+  weekly: [
     'admin-directory.js',
     'clubs.js',
-  ],
-  weekly: [
     'library.js',
     'library-services.js',
     'health-services.js',
     'it-helpdesk.js',
     'intramurals.js',
+  ],
+  monthly: [
+    'it-clientTech.js',
   ],
 };
 

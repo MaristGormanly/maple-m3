@@ -140,9 +140,9 @@ See [docs/reconciliation.md](./docs/reconciliation.md) for a full account of dec
 
 | Name | Primary Responsibilities |
 |---|---|
-| Sufia Khan | Backend API, Frontend UI |
+| Sufia Khan | Backend API and RAG Pipeline, Frontend UI |
 | Sydney Fronheiser | Data pipeline, Scraping scripts |
-| Jenna Iervolino | Scraping scripts, Backend API |
+| Jenna Iervolino | Data Pipeline, Scraping Scripts|
 
 ## AI Disclosure & Tools Used
 

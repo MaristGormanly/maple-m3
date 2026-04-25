@@ -164,7 +164,7 @@ const handleChat = async (req, res) => {
     let confidence = 'low';
     const topScore = retrievalResult.metadata.top_score ?? 0;
     if (topScore >= 0.75) confidence = 'high';
-    else if (topScore >= 0.65) confidence = 'medium';
+    else if (topScore >= 0.60) confidence = 'medium';
 
     // Inject optional User Context
     const userContextStr = context && Object.keys(context).length > 0 

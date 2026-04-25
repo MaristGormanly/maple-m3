@@ -81,7 +81,7 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 }
 ```
 
-**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.65) | `"low"` (below 0.65) | `"none"` (retrieval failed)
+**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.60) | `"low"` (below 0.60) | `"none"` (retrieval failed)
 
 **`freshness.status` values:** `"fresh"` (all retrieved chunks within freshness thresholds) | `"aging"` (approaching threshold) | `"stale"` (one or more chunks exceed thresholds) | `"unknown"` (missing/unparseable timestamp data)
 

@@ -99,11 +99,16 @@ This document traces every significant decision from the original design doc thr
 
 ### Similarity Threshold — Evolved
 
-**Original:** Strict `0.70` cosine similarity threshold enforced throughout — retrieval, system prompt guardrails, and hallucination handling all referenced this value.
+**Original (`docs-for-context/original-design-doc.md`):** Strict `0.70` cosine similarity threshold enforced throughout — retrieval, system prompt guardrails, and hallucination handling all referenced this value.
 
-**Updated & Implemented:** Active threshold is `0.55`. The `0.70` target is retained as a documented design baseline. Below-threshold queries bypass the LLM and return `RETRIEVAL_FAILED` (422) regardless of which threshold value is active.
+**Updated & Implemented (`docs/MAPLE_M3 Project Design Doc.md`):** The official final threshold is `0.55`. Below-threshold queries bypass the LLM and return `RETRIEVAL_FAILED` (422).
 
-**Rationale:** Initial validation runs against administrative office queries (e.g., Registrar, Financial Aid lookups) produced false negatives at `0.70` — valid documents were excluded because office descriptions use formal institutional language that embeds farther from colloquial student query phrasing. Lowering to `0.55` recovered these queries without meaningfully degrading precision on other domains. The threshold is a named constant in `retrieval.js` and can be recalibrated as the golden dataset expands.
+**Rationale:** Validation runs against administrative office queries (e.g., Registrar, Financial Aid lookups) produced false negatives at `0.70` — valid documents were excluded because office descriptions use formal institutional language that embeds farther from colloquial student query phrasing. Lowering to `0.55` recovered these queries without meaningfully degrading precision on other domains. The threshold is a named constant in `retrieval.js`.
+
+**Difference Snapshot:**
+- `Original design doc`: `0.70` (strict baseline)
+- `Final design doc`: `0.55` (official production threshold)
+- `Implemented code`: `SIMILARITY_THRESHOLD = 0.55` in `server/src/services/retrieval.js`
 
 ### Dining Data — Evolved (Major Change)
 
@@ -164,7 +169,7 @@ This document traces every significant decision from the original design doc thr
 ### System Prompt — Confirmed (with threshold update)
 
 **Original:** Version-controlled in `prompts/system/`. Injects `[Injected System Timestamp]` for temporal reasoning. References `0.70` threshold in guardrails.  
-**Implemented:** Loaded dynamically per request (live file read, no restart required). Timestamp injected via `{{CURRENT_TIMESTAMP}}` placeholder. Threshold guardrail updated to `0.55` in active system prompt to match implementation.
+**Implemented:** Loaded dynamically per request (live file read, no restart required). Timestamp injected via `{{CURRENT_TIMESTAMP}}` placeholder. Threshold guardrail uses the official final `0.55` value in active prompts and controller logic.
 
 ---
 
@@ -223,7 +228,7 @@ This document traces every significant decision from the original design doc thr
 | LLM provider | ⚠️ Evolved | Cloud frontier model (Claude/GPT-4o) | Local Ollama (`llama3.1:8b`); OpenAI as fallback |
 | Embedding model | ⚠️ Evolved | OpenAI `text-embedding-3-small` | `nomic-embed-text` via Ollama; OpenAI as fallback |
 | Infrastructure cost | ⚠️ Evolved | ~$50/month | ~$25/month (AI costs eliminated via DGX Spark) |
-| Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 active; 0.70 retained as design baseline |
+| Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 official final threshold |
 | Dining data | ⚠️ Evolved | Daily Playwright scraping | Hardcoded fallback + live links (Cloudflare blocks scraping) |
 | Conversation memory | ⚠️ Evolved | Table described, mechanism unspecified | Last 5 turns injected into LLM message array |
 | `/ingest` auth | ⚠️ Evolved | None specified | Bearer token (`ADMIN_TOKEN`) required |

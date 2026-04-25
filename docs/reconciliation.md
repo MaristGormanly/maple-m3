@@ -99,9 +99,9 @@ This document traces every significant decision from the original design doc thr
 
 ### Similarity Threshold — Evolved
 
-**Original (`docs-for-context/original-design-doc.md`):** Strict `0.70` cosine similarity threshold enforced throughout — retrieval, system prompt guardrails, and hallucination handling all referenced this value.
+**Original:** Strict `0.70` cosine similarity threshold enforced throughout — retrieval, system prompt guardrails, and hallucination handling all referenced this value.
 
-**Updated & Implemented (`docs/MAPLE_M3 Project Design Doc.md`):** The official final threshold is `0.55`. Below-threshold queries bypass the LLM and return `RETRIEVAL_FAILED` (422).
+**Updated & Implemented:** The official final threshold is `0.55`. Below-threshold queries bypass the LLM and return `RETRIEVAL_FAILED` (422).
 
 **Rationale:** Validation runs against administrative office queries (e.g., Registrar, Financial Aid lookups) produced false negatives at `0.70` — valid documents were excluded because office descriptions use formal institutional language that embeds farther from colloquial student query phrasing. Lowering to `0.55` recovered these queries without meaningfully degrading precision on other domains. The threshold is a named constant in `retrieval.js`.
 

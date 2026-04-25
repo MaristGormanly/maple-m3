@@ -72,7 +72,7 @@ This document traces every significant decision from the original design doc thr
 
 - **Conversation history injection:** When `conversation_id` is present, the last 5 turns from `ChatHistory` are loaded and prepended to the LLM `messages[]` array. The original doc described `ChatHistory` as storage for "history and context-aware follow-up questions" but did not specify how history would be re-injected.
 - **Dining intercept:** Dining-related queries are short-circuited before the RAG pipeline and return hardcoded semester hours with live links (see Dining section below).
-- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.65 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
+- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.60 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
 
 ### `/api/v1/campus/status` — Evolved
 
@@ -152,7 +152,7 @@ This document traces every significant decision from the original design doc thr
 
 ## AI Integration
 
-### RAG Architecture — ✅ Confirmed
+### RAG Architecture — Confirmed
 
 **Original & Implemented:** Metadata-based pre-filtering via keyword classifier before vector search. Queries are tagged with a `source_type` domain filter to isolate the search to relevant data. Top-5 chunks retrieved. LLM bypassed entirely when retrieval fails.
 

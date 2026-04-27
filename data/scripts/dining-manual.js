@@ -48,7 +48,7 @@ const diningData = [
     menuLink: "https://dineoncampus.com/marist/locations/yella-s"
   },
   {
-    location: "Halla Shack (North End McCormick Hall)",
+    location: "Halal Shack (North End McCormick Hall)",
     hours: "Monday-Thursday: 11:00 AM - 10:00 PM; Friday: 11:00 AM - 8:00 PM",
     notes: "Features rice bowls and other Middle Eastern dishes.",
     menuLink: "https://dineoncampus.com/marist/locations/halal-shack"

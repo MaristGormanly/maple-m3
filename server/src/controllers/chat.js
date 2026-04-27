@@ -30,7 +30,6 @@ const fs = require('fs');
 const path = require('path');
 const retrievalService = require('../services/retrieval');
 const llmService = require('../services/llm');
-const diningUtils = require('../utils/dining');
 const { evaluateDataFreshness } = require('../utils/dataFreshness');
 
 function resolveLlmModelName() {
@@ -76,36 +75,6 @@ const handleChat = async (req, res) => {
     else if (lowerMessage.includes('news') || lowerMessage.includes('marist circle')) domainFilter = 'News';
     else if (lowerMessage.includes('directory') ||/\boffices?\b/.test(lowerMessage)) domainFilter = 'Admin';
 
-    // Dining queries are intercepted before RAG since dineoncampus.com is protected
-    // by Cloudflare and automated scraping is unreliable. Hardcoded typical semester
-    // hours and official links are returned directly without hitting the LLM.
-    if (diningUtils.isDiningQuery(lowerMessage)) {
-      const diningFreshness = {
-        status: 'aging',
-        warning: 'Dining information reflects typical semester schedules and may change during holidays or special events. Please verify details on official Marist dining pages.',
-        oldest_source_age_hours: null,
-        stale_sources: []
-      };
-
-      return res.status(200).json({
-        success: true,
-        data: {
-          response: diningUtils.getDiningResponse(lowerMessage),
-          conversation_id: activeConversationId,
-          sources: diningUtils.DINING_SOURCES,
-          confidence: 'high',
-          freshness: diningFreshness
-        },
-        error: null,
-        metadata: {
-          timestamp,
-          module: 'm3',
-          version: MAPLE_VERSION,
-          model: 'hardcoded',
-          latency_ms: 0
-        }
-      });
-    }
 
     // Pass conversationId for correlation logging
     const retrievalResult = await retrievalService.search(message, domainFilter, activeConversationId);

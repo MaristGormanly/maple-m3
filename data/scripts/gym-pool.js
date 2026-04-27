@@ -33,6 +33,58 @@ const SOURCE_TITLE = 'Marist Athletics Facility Hours';
 const SOURCE_TYPE = 'RecCenter';
 const GOTO_TIMEOUT_MS = 60_000;
 
+/** Natural-language hooks so embeddings match queries like "when is the pool open". */
+const ENRICHMENT_BY_TITLE = {
+  'McCann Center (Building & Pool Hours)': {
+    facility: 'McCann Center',
+    category: 'Recreation, McCann building, pool, gym, fitness, aquatics',
+    aliases:
+      'McCann pool, McCann gym, McCann Center pool, McCann building hours, athletics facility, rec center, recreation center, Red Foxes athletics',
+    intent:
+      'pool hours, gym hours, building hours, when is the pool open, when does the pool close, is the pool open, what time does the gym open, pool schedule, gym schedule, McCann hours',
+  },
+  'McCormick Hall Fitness Center': {
+    facility: 'McCormick Hall Fitness Center',
+    category: 'North End, McCormick Hall, fitness center, gym',
+    aliases: 'McCormick gym, North End fitness, McCormick fitness',
+    intent:
+      'when is McCormick gym open, McCormick fitness hours, gym hours North End, fitness center schedule',
+  },
+  'Marketplace Fitness Center': {
+    facility: 'Marketplace Fitness Center',
+    category: 'Upper West Cedar, Marketplace, fitness center, gym',
+    aliases: 'Marketplace gym, UWC fitness, Marketplace Cedar fitness',
+    intent:
+      'when is Marketplace gym open, Marketplace fitness hours, gym hours Upper West Cedar',
+  },
+};
+
+const DEFAULT_ENRICHMENT = {
+  facility: 'Marist athletics facility',
+  category: 'Recreation, fitness, gym',
+  aliases: 'rec center, athletics',
+  intent: 'hours, when open, schedule, gym hours, pool hours',
+};
+
+/**
+ * Wraps scraped text with structured labels + synonym/intent lines for better vector recall.
+ */
+function buildEnrichedChunkContent(sectionTitle, cleanScrapedText) {
+  const meta = ENRICHMENT_BY_TITLE[sectionTitle] || DEFAULT_ENRICHMENT;
+  return [
+    `Facility: ${meta.facility}`,
+    `Section: ${sectionTitle}`,
+    `Category: ${meta.category}`,
+    `Also known as: ${meta.aliases}`,
+    `Common questions: ${meta.intent}`,
+    '',
+    'Official hours (from Marist Athletics):',
+    cleanScrapedText,
+    '',
+    `Source: ${SOURCE_URL}`,
+  ].join('\n');
+}
+
 async function scrapeAndIngestRec() {
   let browser;
   try {
@@ -45,22 +97,29 @@ async function scrapeAndIngestRec() {
 
     await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
 
-    // Extract the raw text from the content area
     const facilityData = await page.evaluate(() => {
       const content = document.querySelector('.article-content')?.innerText || "";
       
-      // Split logic based on known headers in the HTML provided
-      const buildingHours = content.match(/Building Hours([\s\S]*?)Pool Hours/)?.[1]?.trim();
-      const poolHours = content.match(/Pool Hours([\s\S]*?)Building hours may/)?.[1]?.trim();
-      const mccormick = content.match(/McCormick Hall Fitness Center([\s\S]*?)Marketplace/)?.[1]?.trim();
-      const marketplace = content.match(/Marketplace Fitness Center([\s\S]*?)Please call/)?.[1]?.trim();
+      // Use a more flexible regex to capture sections based on the HTML provided
+      // Grouping McCann Building and Pool together as requested
+      const mccannMatch = content.match(/McCann\s+Center Hours([\s\S]*?)McCormick Hall/i);
+      const mccormickMatch = content.match(/McCormick Hall Fitness Center([\s\S]*?)Marketplace/i);
+      const marketplaceMatch = content.match(/Marketplace\s+Fitness Center([\s\S]*?)Please call/i);
 
       return [
-        { title: "McCann Building Hours", text: buildingHours },
-        { title: "McCann Pool Hours", text: poolHours },
-        { title: "McCormick Hall Fitness Center", text: mccormick },
-        { title: "Marketplace Fitness Center", text: marketplace }
-      ].filter(s => s.text); // Remove empty sections
+        { 
+          title: "McCann Center (Building/Gym & Pool Hours)", 
+          text: mccannMatch ? mccannMatch[0].replace(/McCormick Hall/, "").trim() : null 
+        },
+        { 
+          title: "McCormick Hall Fitness Center", 
+          text: mccormickMatch ? mccormickMatch[0].replace(/Marketplace/, "").trim() : null 
+        },
+        { 
+          title: "Marketplace Fitness Center", 
+          text: marketplaceMatch ? marketplaceMatch[0].replace(/Please call/, "").trim() : null 
+        }
+      ].filter(s => s.text);
     });
 
     if (facilityData.length === 0) {
@@ -68,24 +127,26 @@ async function scrapeAndIngestRec() {
       return;
     }
 
-    console.log(`Found ${facilityData.length} sections. Generating embeddings...`);
+    console.log(`Found ${facilityData.length} combined sections. Generating embeddings...`);
 
     for (let i = 0; i < facilityData.length; i++) {
       const section = facilityData[i];
       
       try {
-        // Clean non-ASCII and format the chunk
-        const cleanText = section.text.replace(/[^\x00-\x7F]/g, " ").replace(/\s+/g, ' ').trim();
-        const chunkContent = `${section.title}\n${cleanText}\nSource: ${SOURCE_URL}`;
+        // Clean up text: remove multiple spaces, fix non-breaking space artifacts
+        const cleanText = section.text
+          .replace(/\s+/g, ' ')
+          .replace(/[^\x00-\x7F]/g, " ")
+          .trim();
 
-        // 1. Generate actual embeddings
+        const chunkContent = buildEnrichedChunkContent(section.title, cleanText);
+
         const embeddingResponse = await openai.embeddings.create({
           model: embedModel, 
           input: chunkContent,
         });
         const embeddingVector = embeddingResponse.data[0].embedding;
 
-        // 2. Insert into Documents Table (Matching your working example's schema)
         const docInsertQuery = `
           INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
           VALUES ($1, $2, $3, $4, $5)
@@ -100,7 +161,6 @@ async function scrapeAndIngestRec() {
         ]);
         const docId = docResult.rows[0].doc_id;
 
-        // 3. Insert into DocumentEmbeddings Table
         const vectorString = `[${embeddingVector.join(',')}]`;
         const vectorInsertQuery = `
           INSERT INTO DocumentEmbeddings (doc_id, embedding)

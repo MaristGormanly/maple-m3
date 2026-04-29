@@ -6,7 +6,7 @@ All ingestion is driven by `run-ingestion-batch.js`. Run commands from the **rep
 
 | Batch | Scripts | Frequency | Rationale |
 |---|---|---|---|
-| `daily` | campus-events, news, library, intramurals | Every day | High-volatility; events, news, library hours, sports schedules change daily |
+| `daily` | dining-manual, campus-events, news, library, intramurals | Every day | High-volatility; dining and events change frequently and benefit from daily refresh |
 | `weekly` | admin-directory, clubs, health-services, it-helpdesk | Sundays | Moderate-to-low volatility; weekly refresh keeps directories/services current |
 | `monthly` | library-services, it-clientTech | First day of each month | Low-volatility support content; monthly refresh is sufficient |
 
@@ -30,7 +30,7 @@ Create three scheduled tasks. Open **Task Scheduler** → *Create Basic Task* (o
 $repo = "C:\path\to\maple-m3"
 $node = (Get-Command node).Source  # resolves to the full node.exe path
 
-# Daily at 5:00 AM — campus-events, news
+# Daily at 5:00 AM — dining-manual, campus-events, news, library, intramurals
 schtasks /Create /TN "MAPLE-Ingest-Daily" /TR "`"$node`" `"$repo\data\scripts\run-ingestion-batch.js`" daily" /SC DAILY /ST 05:00 /F
 
 # Sunday at 6:00 AM — admin-directory, clubs, library, library-services, health-services, it-helpdesk, intramurals
@@ -69,7 +69,7 @@ crontab -e
 Add entries like:
 
 ```cron
-# Daily at 5:00 AM — campus-events, news
+# Daily at 5:00 AM — dining-manual, campus-events, news, library, intramurals
 0 5 * * * /usr/local/bin/node /Users/you/path/to/maple-m3/data/scripts/run-ingestion-batch.js daily >> /Users/you/path/to/maple-m3/logs/ingestion/cron.log 2>&1
 
 # Weekly (Sunday) at 6:00 AM — admin-directory, clubs, library, library-services, health-services, it-helpdesk, intramurals

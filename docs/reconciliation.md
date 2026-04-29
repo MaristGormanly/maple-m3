@@ -140,13 +140,13 @@ This document traces every significant decision from the original design doc thr
 **Original:** Not listed in the original design doc's data source table.  
 **Updated & Implemented:** Added `maristcircle.com` as a news source with Playwright scraping.
 
-### Automated CRON Scheduling — Descoped
+### Automated CRON Scheduling — Evolved
 
 **Original:** Scheduled CRON jobs for daily re-ingestion of dining and events data, described as essential for data freshness.
 
-**Implemented:** Ingestion scripts must be run manually. No scheduler is active in the deployed system.
+**Implemented:** Batch automation is defined via `data/scripts/run-ingestion-batch.js` and documented scheduler entries in `data/scripts/cron-schedule.md`. Daily scheduling includes both Dining (`dining-manual.js`) and Events ingestion paths.
 
-**Rationale:** Dining and events ingestion both remain manual for the pilot; dining retrieval depends on running `data/scripts/dining-manual.js` as needed. The `/ingest` API endpoint currently triggers only defined schedule batches and can be extended in a future iteration.
+**Rationale:** High-volatility sources (Dining + Events) are grouped into the daily batch to keep freshness aligned with student-facing usage patterns.
 
 ---
 
@@ -229,13 +229,13 @@ This document traces every significant decision from the original design doc thr
 | Embedding model | ⚠️ Evolved | OpenAI `text-embedding-3-small` | `nomic-embed-text` via Ollama; OpenAI as fallback |
 | Infrastructure cost | ⚠️ Evolved | ~$50/month | ~$25/month (AI costs eliminated via DGX Spark) |
 | Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 official final threshold |
-| Dining data | ⚠️ Evolved | Daily Playwright scraping | Manual Dining ingestion (`dining-manual.js`) + hardcoded fallback when retrieval has no Dining chunks |
+| Dining data | ⚠️ Evolved | Daily Playwright scraping | Daily scheduled `dining-manual.js` ingestion + hardcoded fallback when retrieval has no Dining chunks |
 | Conversation memory | ⚠️ Evolved | Table described, mechanism unspecified | Last 5 turns injected into LLM message array |
 | `/ingest` auth | ⚠️ Evolved | None specified | Bearer token (`ADMIN_TOKEN`) required |
 | `/ingest` scope | ⚠️ Evolved | General-purpose URL ingestion | Scoped to `source_type: "Admin"` only |
 | `/status` data source | ⚠️ Evolved | `CampusEvents` table | `Documents` table filtered by `source_type='Events'` |
 | Observability logs | ⚠️ Evolved | LLM fields only specified | Extended to retrieval logs with matching schema |
-| CRON scheduling | ❌ Descoped | Daily automated re-ingestion | Manual script execution |
+| CRON scheduling | ⚠️ Evolved | Daily automated re-ingestion | Batch runner + documented Task Scheduler/cron automation (`daily`, `weekly`, `monthly`) |
 | Dietary restriction detail | ❌ Descoped | Stretch goal | Blocked by Cloudflare; menu link redirect provided |
 | Shuttle/laundry availability | ❌ Descoped | Stretch goal | Requires real-time integrations out of scope |
 | Smoke test suite | ⚠️ Evolved (Addition) | Not planned | `server/tests/smoke.js` added |

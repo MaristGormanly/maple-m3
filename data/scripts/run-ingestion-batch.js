@@ -17,13 +17,9 @@
  *   1st of month at 6:30 AM → node data/scripts/run-ingestion-batch.js monthly
  *
  * Batches:
- *   daily   — campus-events, news, library, intramurals
+ *   daily   — dining-manual, campus-events, news, library, intramurals
  *   weekly  — admin-directory, clubs, health-services, it-helpdesk
  *   monthly — library-services, it-clientTech
- *
- * Scripts excluded from automation:
- *   dining-manual.js — not scheduled; dining answers are served by hardcoded fallback
- *                      in server/src/utils/dining.js (Cloudflare blocks reliable scraping)
  */
 
 const { execFile } = require('child_process');
@@ -38,6 +34,7 @@ const TIMEOUT_MS  = 10 * 60 * 1000; // 10 minutes per script
 // Scripts run sequentially to avoid overwhelming the DB pool or the embedding service.
 const BATCHES = {
   daily: [
+    'dining-manual.js',
     'campus-events.js',
     'news.js',
     'library.js',

@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node tests/smoke.js"
+    "test": "node tests/smoke.js",
+    "test:golden": "node ../eval/scripts/run-golden-eval.js"
   },
   "keywords": [],
   "author": "",

@@ -71,8 +71,8 @@ This document traces every significant decision from the original design doc thr
 **Implemented:** Identical contract. The following were added beyond the original spec:
 
 - **Conversation history injection:** When `conversation_id` is present, the last 5 turns from `ChatHistory` are loaded and prepended to the LLM `messages[]` array. The original doc described `ChatHistory` as storage for "history and context-aware follow-up questions" but did not specify how history would be re-injected.
-- **Dining intercept:** Dining-related queries are short-circuited before the RAG pipeline and return hardcoded semester hours with live links (see Dining section below).
-- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.60 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
+- **Dining path (DB-first + fallback):** Dining-related queries are routed to Dining retrieval first (`source_type='Dining'`), with hardcoded fallback only if retrieval returns no dining chunks (see Dining section below).
+- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.65 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
 
 ### `/api/v1/campus/status` — Evolved
 
@@ -114,11 +114,11 @@ This document traces every significant decision from the original design doc thr
 
 **Original:** Daily Playwright scraping of `dineoncampus.com` to intercept JSON API responses for both dining hours and menus. Treated as the highest-volatility domain alongside campus events.
 
-**Updated & Implemented:** Dining data is not ingested into the vector store. Instead, the chat controller intercepts dining-related queries before the RAG pipeline using a keyword classifier (`server/src/utils/dining.js`) and returns:
-- **Hours queries:** Hardcoded typical semester hours for all 13 dining locations across 9 campus buildings, formatted as markdown tables, with a live link and a staleness warning.
-- **Menu queries:** A redirect to the live `dineoncampus.com/marist/whats-on-the-menu` page.
+**Updated & Implemented:** Dining uses a hybrid approach:
+- **Primary path (DB-first):** `data/scripts/dining-manual.js` ingests dining content into `Documents` / `DocumentEmbeddings` with `source_type='Dining'`, and `/chat` routes dining intents to retrieval first.
+- **Fallback path:** If retrieval returns zero dining chunks, the controller uses `server/src/utils/dining.js` to return a hardcoded response with live links and a freshness warning.
 
-**Rationale:** The `dineoncampus.com` platform is protected by Cloudflare's bot detection layer, which blocks headless browser requests regardless of wait strategy or user-agent spoofing. Scrapers consistently received Cloudflare challenge pages rather than dining content. The hardcoded approach trades daily freshness for 100% reliability. Semester-boundary hours changes (the only type that would invalidate hardcoded data for extended periods) can be updated manually in a single source file.
+**Rationale:** The `dineoncampus.com` platform is protected by Cloudflare's bot detection layer, which blocks reliable live scraping. Manual ingestion provides a retrievable Dining index for normal RAG behavior, while hardcoded fallback guarantees graceful handling when Dining retrieval is empty.
 
 ### IT Help Desk Source — Evolved
 
@@ -146,7 +146,7 @@ This document traces every significant decision from the original design doc thr
 
 **Implemented:** Ingestion scripts must be run manually. No scheduler is active in the deployed system.
 
-**Rationale:** Dining data is now hardcoded, removing the need for daily dining re-ingestion. Campus events ingestion remains manual for the pilot. The `/ingest` API endpoint provides a programmatic trigger that can be wired to a scheduler in a future iteration without code changes.
+**Rationale:** Dining and events ingestion both remain manual for the pilot; dining retrieval depends on running `data/scripts/dining-manual.js` as needed. The `/ingest` API endpoint currently triggers only defined schedule batches and can be extended in a future iteration.
 
 ---
 
@@ -229,7 +229,7 @@ This document traces every significant decision from the original design doc thr
 | Embedding model | ⚠️ Evolved | OpenAI `text-embedding-3-small` | `nomic-embed-text` via Ollama; OpenAI as fallback |
 | Infrastructure cost | ⚠️ Evolved | ~$50/month | ~$25/month (AI costs eliminated via DGX Spark) |
 | Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 official final threshold |
-| Dining data | ⚠️ Evolved | Daily Playwright scraping | Hardcoded fallback + live links (Cloudflare blocks scraping) |
+| Dining data | ⚠️ Evolved | Daily Playwright scraping | Manual Dining ingestion (`dining-manual.js`) + hardcoded fallback when retrieval has no Dining chunks |
 | Conversation memory | ⚠️ Evolved | Table described, mechanism unspecified | Last 5 turns injected into LLM message array |
 | `/ingest` auth | ⚠️ Evolved | None specified | Bearer token (`ADMIN_TOKEN`) required |
 | `/ingest` scope | ⚠️ Evolved | General-purpose URL ingestion | Scoped to `source_type: "Admin"` only |

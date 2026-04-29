@@ -9,8 +9,8 @@
  *     prior exchanges within the same session
  *  4. Applies keyword-based domain pre-filtering (Library, Health, IT, Events, etc.)
  *     to narrow the vector search before embedding
- *  4a. Intercepts dining queries before RAG and returns hardcoded typical semester
- *     hours or a menu link (dineoncampus.com is Cloudflare-protected; no scraping)
+ *  4a. Routes dining queries to Dining retrieval first; if no chunks are found,
+ *     falls back to hardcoded typical semester hours and a live menu link
  *  5. Calls retrievalService.search() to embed the query and fetch the top-k chunks
  *     from PostgreSQL + pgvector above the configured similarity threshold
  *  6. Returns a RETRIEVAL_FAILED (422) response if no chunks meet the threshold,
@@ -31,6 +31,7 @@ const path = require('path');
 const retrievalService = require('../services/retrieval');
 const llmService = require('../services/llm');
 const { evaluateDataFreshness } = require('../utils/dataFreshness');
+const { isDiningQuery, buildDiningResponse } = require('../utils/dining');
 
 function resolveLlmModelName() {
   return process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
@@ -57,15 +58,17 @@ const handleChat = async (req, res) => {
     }
 
     const activeConversationId = conversation_id || `conv_${Date.now()}`;
+    const lowerMessage = message.toLowerCase();
+    const isDiningIntent = isDiningQuery(message);
 
     // Acquire the pool once and reuse it for both the history fetch and the final write
     const pool = retrievalService.getDbPool();
 
     // Exact match mapping for metadata pre-filtering
     let domainFilter = null;
-    const lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.includes('library')) domainFilter = 'Library';
+    if (isDiningIntent) domainFilter = 'Dining';
+    else if (lowerMessage.includes('library')) domainFilter = 'Library';
     else if (lowerMessage.includes('health') || lowerMessage.includes('immunization') || lowerMessage.includes('wellness')) domainFilter = 'Health';
     else if (lowerMessage.includes('wifi') || lowerMessage.includes('print')) domainFilter = 'IT Support';
     else if (lowerMessage.includes('event')) domainFilter = 'Events';
@@ -98,6 +101,25 @@ const handleChat = async (req, res) => {
     }
 
     if (retrievalResult.chunks.length === 0) {
+      if (isDiningIntent) {
+        const diningPayload = buildDiningResponse();
+        return res.status(200).json({
+          success: true,
+          data: {
+            ...diningPayload,
+            conversation_id: activeConversationId
+          },
+          error: null,
+          metadata: {
+            timestamp,
+            module: 'm3',
+            version: MAPLE_VERSION,
+            model: 'hardcoded',
+            latency_ms: 0
+          }
+        });
+      }
+
       const thresholdApplied = retrievalResult.metadata?.threshold_applied ?? 0.55;
     
       return res.status(422).json({

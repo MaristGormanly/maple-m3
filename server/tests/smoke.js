@@ -67,6 +67,24 @@ async function run() {
     assert(['fresh','aging','stale','unknown'].includes(body.data.freshness?.status), 'Invalid freshness status');
   });
 
+  // /chat dining path (DB-first; hardcoded fallback when no dining chunks)
+  await check('POST /chat (dining query) → 200 via DB or hardcoded fallback', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/campus/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'What are dining hall hours today?' })
+    });
+    assert(res.status === 200, `Expected 200, got ${res.status}`);
+    const body = await res.json();
+    assert(body.success === true, 'Expected success: true');
+    assert(typeof body.data.response === 'string', 'Expected dining response text');
+    if (body.metadata.model === 'hardcoded') {
+      assert(body.data.confidence === 'high', 'Expected high confidence for hardcoded dining fallback');
+    } else {
+      assert(Array.isArray(body.data.sources), 'Expected sources array for DB-backed dining response');
+    }
+  });
+
   // /chat missing message
   await check('POST /chat (no message) → 400 VALIDATION_ERROR', async () => {
     const res = await fetch(`${BASE_URL}/api/v1/campus/chat`, {

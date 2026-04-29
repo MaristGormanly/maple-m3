@@ -22,8 +22,8 @@
  *   monthly — library-services, it-clientTech
  *
  * Scripts excluded from automation:
- *   dining-hours.js — hardcoded fallback in server/src/utils/dining.js (Cloudflare blocks scraping)
- *   dining-menus.js — same reason; redirect to live site provided instead
+ *   dining-manual.js — not scheduled; dining answers are served by hardcoded fallback
+ *                      in server/src/utils/dining.js (Cloudflare blocks reliable scraping)
  */
 
 const { execFile } = require('child_process');

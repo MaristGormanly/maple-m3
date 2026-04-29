@@ -28,7 +28,7 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 
 **Rate limit:** 30 requests per IP per minute.
 
-> **Dining intercept:** Queries detected as dining-related (keywords: `dining`, `cafeteria`, specific location names such as `halal shack`, `saxbys`, etc., or broad food terms like `lunch`/`dinner` co-occurring with operational context words like `open`/`hours`) are intercepted **before** the RAG pipeline and return hardcoded typical semester hours plus live links to `dineoncampus.com/marist`. These responses have `confidence: "high"`, `model: "hardcoded"`, and include a `freshness` object with a user-facing caution that dining data may change during holidays or special events.
+> **Dining behavior (DB-first + fallback):** Dining-related queries are first routed through normal retrieval with `source_type = "Dining"` (ingested from `data/scripts/dining-manual.js`). If retrieval returns no dining chunks, the controller falls back to a hardcoded dining response with live links to `dineoncampus.com/marist`. Fallback responses use `confidence: "high"` and `metadata.model: "hardcoded"`.
 
 **Request body**
 
@@ -189,7 +189,7 @@ Triggers a background data ingestion and vectorization pipeline script. Returns 
 Authorization: Bearer <ADMIN_TOKEN>
 ```
 
-**Scope:** This endpoint triggers batch ingestion by schedule group using `run-ingestion-batch.js`. Dining data is not ingested — it is served from hardcoded semester hours in `server/src/utils/dining.js`.
+**Scope:** This endpoint triggers batch ingestion by schedule group using `run-ingestion-batch.js`. Dining ingestion is not currently part of the API-triggered batches; dining queries use DB-first retrieval (`source_type = "Dining"`) with a hardcoded fallback in `server/src/utils/dining.js` when retrieval returns no dining chunks.
 
 **Request body**
 

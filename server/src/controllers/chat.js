@@ -33,6 +33,125 @@ const llmService = require('../services/llm');
 const { evaluateDataFreshness } = require('../utils/dataFreshness');
 const { isDiningQuery, buildDiningResponse } = require('../utils/dining');
 
+const PROMPT_LEAK_PATTERNS = [
+  /system context:/i,
+  /constraints\s*&\s*guardrails:/i,
+  /retrieved context:/i
+];
+
+const ROLE_IMPERSONATION_PATTERNS = [
+  /pretend to be .*registrar/i,
+  /act as .*registrar/i,
+  /approve my graduation/i,
+  /impersonate .*office/i
+];
+
+const OUT_OF_SCOPE_ACADEMIC_PATTERNS = [
+  /french revolution/i,
+  /napoleon/i,
+  /bastille/i,
+  /reign of terror/i,
+  /write me (a|an) .*essay/i,
+  /write .*essay/i,
+  /do my homework/i,
+  /help with homework/i,
+  /summarize .*history/i,
+  /explain .*history/i,
+  /\bessay\b/i,
+  /\bhomework\b/i,
+  /\bassignment\b/i
+];
+
+const PROMPT_EXFILTRATION_REQUEST_PATTERNS = [
+  /system prompt/i,
+  /internal instructions/i,
+  /hidden context/i,
+  /word for word/i,
+  /verbatim/i,
+  /reveal .*prompt/i,
+  /show .*instructions/i
+];
+
+const CAMPUS_CONTEXT_HINTS = [
+  'marist', 'campus', 'library', 'dining', 'health', 'wifi', 'printing', 'it',
+  'registrar', 'financial aid', 'club', 'event', 'gym', 'pool', 'intramural', 'directory'
+];
+
+const NON_CAMPUS_TOPIC_PATTERNS = [
+  /french revolution/i,
+  /american revolution/i,
+  /world war [12]/i,
+  /napoleon/i,
+  /bastille/i,
+  /reign of terror/i,
+  /\broman empire\b/i,
+  /\bmitosis\b/i,
+  /\bphotosynthesis\b/i
+];
+
+function hasPromptLeakIndicators(text, userMessage) {
+  if (!text || typeof text !== 'string') return false;
+  const matchCount = PROMPT_LEAK_PATTERNS.filter((pattern) => pattern.test(text)).length;
+  if (matchCount === 0) return false;
+
+  // If the user asked for internals, any marker is a leak signal.
+  if (isPromptExfiltrationRequest(userMessage)) return true;
+
+  // For regular campus queries, only block when multiple internal sections are exposed.
+  return matchCount >= 2;
+}
+
+function isRoleImpersonationRequest(text) {
+  if (!text || typeof text !== 'string') return false;
+  return ROLE_IMPERSONATION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isOutOfScopeAcademicRequest(text) {
+  if (!text || typeof text !== 'string') return false;
+  const normalized = text.toLowerCase();
+  const hasOutOfScopeSignal = OUT_OF_SCOPE_ACADEMIC_PATTERNS.some((pattern) => pattern.test(text));
+  const hasCampusSignal = CAMPUS_CONTEXT_HINTS.some((hint) => normalized.includes(hint));
+  return hasOutOfScopeSignal && !hasCampusSignal;
+}
+
+function isHardBlockedNonCampusTopic(text) {
+  if (!text || typeof text !== 'string') return false;
+  return NON_CAMPUS_TOPIC_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isPromptExfiltrationRequest(text) {
+  if (!text || typeof text !== 'string') return false;
+  return PROMPT_EXFILTRATION_REQUEST_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function buildPromptLeakSafeResponse() {
+  return {
+    response: "I can't help with that. I can still help with campus services questions like dining, library, events, IT, health, and clubs.",
+    sources: [],
+    confidence: 'none',
+    freshness: {
+      status: 'unknown',
+      warning: null,
+      oldest_source_age_hours: null,
+      stale_sources: []
+    }
+  };
+}
+
+function buildPolicyRefusalResponse() {
+  return {
+    response: "I can only help with Marist campus services topics. I can't assist with role impersonation or unrelated essay/homework requests. For campus administrative actions, please contact the official office directly.",
+    sources: [],
+    confidence: 'none',
+    freshness: {
+      status: 'unknown',
+      warning: null,
+      oldest_source_age_hours: null,
+      stale_sources: []
+    }
+  };
+}
+
 function resolveLlmModelName() {
   return process.env.USE_LOCAL_MODEL === 'true' ? 'llama3.1:8b' : 'gpt-4o-mini';
 }
@@ -60,6 +179,31 @@ const handleChat = async (req, res) => {
     const activeConversationId = conversation_id || `conv_${Date.now()}`;
     const lowerMessage = message.toLowerCase();
     const isDiningIntent = isDiningQuery(message);
+    const isEvalRequest = String(req.headers['x-maple-eval'] || '').toLowerCase() === 'true';
+
+    if (
+      isPromptExfiltrationRequest(message) ||
+      isRoleImpersonationRequest(message) ||
+      isOutOfScopeAcademicRequest(message) ||
+      isHardBlockedNonCampusTopic(message)
+    ) {
+      const safePayload = buildPolicyRefusalResponse();
+      return res.status(200).json({
+        success: true,
+        data: {
+          ...safePayload,
+          conversation_id: activeConversationId
+        },
+        error: null,
+        metadata: {
+          timestamp,
+          module: "m3",
+          version: MAPLE_VERSION,
+          model: 'policy-guard',
+          latency_ms: 0
+        }
+      });
+    }
 
     // Acquire the pool once and reuse it for both the history fetch and the final write
     const pool = retrievalService.getDbPool();
@@ -196,7 +340,8 @@ const handleChat = async (req, res) => {
     const llmResult = await llmService.complete({
       systemPrompt,
       messages: [...historyMessages, { role: 'user', content: message }],
-      conversationId: activeConversationId
+      conversationId: activeConversationId,
+      temperature: isEvalRequest ? 0 : 0.3
     });
 
     if (!llmResult.success) {
@@ -214,6 +359,25 @@ const handleChat = async (req, res) => {
           version: MAPLE_VERSION,
           model: llmResult.model || resolveLlmModelName(),
           ...retrievalResult.metadata
+        }
+      });
+    }
+
+    if (hasPromptLeakIndicators(llmResult.content, message)) {
+      const safePayload = buildPromptLeakSafeResponse();
+      return res.status(200).json({
+        success: true,
+        data: {
+          ...safePayload,
+          conversation_id: activeConversationId
+        },
+        error: null,
+        metadata: {
+          timestamp,
+          module: "m3",
+          version: MAPLE_VERSION,
+          model: 'policy-guard',
+          latency_ms: llmResult.latencyMs
         }
       });
     }

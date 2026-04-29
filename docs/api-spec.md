@@ -189,18 +189,21 @@ Triggers a background data ingestion and vectorization pipeline script. Returns 
 Authorization: Bearer <ADMIN_TOKEN>
 ```
 
-**MVP scope:** Only `source_type: "Admin"` is supported via this endpoint. All other domain ingestion is run directly via the scripts in `data/scripts/`. Dining data is not ingested — it is served from hardcoded semester hours in `server/src/utils/dining.js`.
+**Scope:** This endpoint triggers batch ingestion by schedule group using `run-ingestion-batch.js`. Dining data is not ingested — it is served from hardcoded semester hours in `server/src/utils/dining.js`.
 
 **Request body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `source_type` | string | yes | The domain to ingest. Only `"Admin"` is accepted. |
+| `batch` | string | yes* | Ingestion batch to run. Allowed values: `"daily"`, `"weekly"`, `"monthly"`. |
+| `source_type` | string | no | Legacy fallback. `"Admin"` maps to the `"weekly"` batch if `batch` is omitted. |
+
+\* `batch` is required unless using legacy `source_type: "Admin"`.
 
 **Example request**
 ```json
 {
-  "source_type": "Admin"
+  "batch": "weekly"
 }
 ```
 
@@ -210,7 +213,8 @@ Authorization: Bearer <ADMIN_TOKEN>
   "success": true,
   "data": {
     "message": "Ingestion pipeline triggered successfully in the background.",
-    "jobId": "job_1713449400000"
+    "jobId": "job_1713449400000",
+    "batch": "weekly"
   },
   "error": null,
   "metadata": {
@@ -225,6 +229,6 @@ Authorization: Bearer <ADMIN_TOKEN>
 
 | HTTP | `error.code` | Condition |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | `source_type` is missing or not `"Admin"` |
+| 400 | `VALIDATION_ERROR` | `batch` is missing/invalid and no legacy `source_type: "Admin"` fallback is provided |
 | 401 | `UNAUTHORIZED` | `Authorization` header is absent or not in `Bearer` format |
 | 403 | `FORBIDDEN` | Bearer token does not match `ADMIN_TOKEN` |

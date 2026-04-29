@@ -84,7 +84,7 @@ async function run() {
     const res = await fetch(`${BASE_URL}/api/v1/campus/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_type: 'Admin' })
+      body: JSON.stringify({ batch: 'weekly' })
     });
     assert(res.status === 401, `Expected 401, got ${res.status}`);
     const body = await res.json();
@@ -96,7 +96,7 @@ async function run() {
     const res = await fetch(`${BASE_URL}/api/v1/campus/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer wrong-token' },
-      body: JSON.stringify({ source_type: 'Admin' })
+      body: JSON.stringify({ batch: 'weekly' })
     });
     assert(res.status === 403, `Expected 403, got ${res.status}`);
     const body = await res.json();
@@ -108,24 +108,37 @@ async function run() {
     const res = await fetch(`${BASE_URL}/api/v1/campus/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
-      body: JSON.stringify({ source_type: 'Admin' })
+      body: JSON.stringify({ batch: 'weekly' })
     });
     assert(res.status === 202, `Expected 202, got ${res.status}`);
     const body = await res.json();
     assert(body.success === true, 'Expected success: true');
     assert(typeof body.data.jobId === 'string', 'Expected data.jobId to be a string');
+    assert(body.data.batch === 'weekly', 'Expected data.batch to be weekly');
   });
 
-  // /ingest valid token + wrong source_type
-  await check('POST /ingest (valid token, bad source_type) → 400 VALIDATION_ERROR', async () => {
+  // /ingest valid token + wrong batch
+  await check('POST /ingest (valid token, bad batch) → 400 VALIDATION_ERROR', async () => {
     const res = await fetch(`${BASE_URL}/api/v1/campus/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
-      body: JSON.stringify({ source_type: 'Dining' })
+      body: JSON.stringify({ batch: 'hourly' })
     });
     assert(res.status === 400, `Expected 400, got ${res.status}`);
     const body = await res.json();
     assert(body.error.code === 'VALIDATION_ERROR', 'Expected VALIDATION_ERROR');
+  });
+
+  // /ingest valid token + legacy source_type fallback
+  await check('POST /ingest (legacy source_type=Admin) → 202 weekly fallback', async () => {
+    const res = await fetch(`${BASE_URL}/api/v1/campus/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_TOKEN}` },
+      body: JSON.stringify({ source_type: 'Admin' })
+    });
+    assert(res.status === 202, `Expected 202, got ${res.status}`);
+    const body = await res.json();
+    assert(body.data.batch === 'weekly', 'Expected legacy source_type fallback to weekly batch');
   });
 
   console.log(`\n${passed} passed, ${failed} failed\n`);

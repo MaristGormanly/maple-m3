@@ -35,6 +35,12 @@ Copy the environment template and fill in your database credentials and secrets:
 cp .env.example .env
 ```
 
+PowerShell equivalent (Windows):
+
+```powershell
+Copy-Item .env.example .env
+```
+
 Key variables to set:
 * `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT` — PostgreSQL connection
 * `USE_LOCAL_MODEL` — `true` for DGX Spark (Ollama), `false` for OpenAI
@@ -112,6 +118,16 @@ node server/tests/smoke.js
 $env:BASE_URL="https://m3.maristchat.com"; $env:ADMIN_TOKEN="your-token"; node server/tests/smoke.js
 ```
 
+Latest local golden-eval summary (`eval/results/golden-eval-20260501-131945.json`, dataset `eval/test-cases/golden-dataset.json`):
+
+- Total cases: `50` (`core`: 15, `temporal`: 12, `routing`: 13, `adversarial`: 10)
+- Pass rate: `100%` (`50/50` passed)
+- Retrieval precision: `86%`
+- Retrieval recall: `82.3%`
+- Faithfulness pass rate: `100%`
+- Relevance pass rate: `100%`
+- Log schema compliance: `100%`
+
 ## Current Implementation Status
 
 **Backend**
@@ -121,10 +137,10 @@ $env:BASE_URL="https://m3.maristchat.com"; $env:ADMIN_TOKEN="your-token"; node s
 - Structured JSON observability logs (LLM + retrieval) written to daily rotating `logs/` files
 - CORS restricted to known origins; per-IP rate limiting (30 req/min) on `/chat`
 - Bearer token authentication (`ADMIN_TOKEN`) on `/ingest`
-- MAPLE-compliant error envelopes and standard error codes across all endpoints
+- MAPLE-compliant error envelopes and standard error codes across campus API endpoints (`/api/v1/campus/*`)
 
 **Frontend**
-- Functional Angular chat UI with markdown rendering, source attribution, and confidence badges
+- Functional Angular chat UI with markdown rendering, source attribution, confidence badges, and data-freshness notices
 - Distinct error messaging for 422 (RETRIEVAL_FAILED) and 502 (AI_ERROR)
 - `conversation_id` tracked across turns for persistent multi-turn context
 

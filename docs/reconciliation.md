@@ -72,7 +72,7 @@ This document traces every significant decision from the original design doc thr
 
 - **Conversation history injection:** When `conversation_id` is present, the last 5 turns from `ChatHistory` are loaded and prepended to the LLM `messages[]` array. The original doc described `ChatHistory` as storage for "history and context-aware follow-up questions" but did not specify how history would be re-injected.
 - **Dining path (DB-first + fallback):** Dining-related queries are routed to Dining retrieval first (`source_type='Dining'`), with hardcoded fallback only if retrieval returns no dining chunks (see Dining section below).
-- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.65 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
+- **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.60 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
 
 ### `/api/v1/campus/status` — Evolved
 
@@ -82,9 +82,9 @@ This document traces every significant decision from the original design doc thr
 ### `/api/v1/campus/ingest` — Evolved
 
 **Original:** Accepts `sourceUrl` and `type` fields; designed as a general-purpose ingestion trigger for any URL and content type. No authentication specified.  
-**Updated & Implemented:** Accepts `source_type` only (not a URL); scoped to `source_type: "Admin"` for the MVP. Added `Authorization: Bearer <ADMIN_TOKEN>` header requirement — absent header returns 401 `UNAUTHORIZED`, wrong token returns 403 `FORBIDDEN`. Triggers `data/scripts/admin-directory.js` asynchronously and returns 202 with a `jobId`.
+**Updated & Implemented:** Uses controlled batch triggering instead of arbitrary URL ingestion. The endpoint accepts `batch` (`daily`, `weekly`, `monthly`), with a legacy fallback where `source_type: "Admin"` maps to the `weekly` batch. Added `Authorization: Bearer <ADMIN_TOKEN>` header requirement — absent header returns 401 `UNAUTHORIZED`, wrong token returns 403 `FORBIDDEN`. Triggers `data/scripts/run-ingestion-batch.js` asynchronously and returns 202 with a `jobId` and selected `batch`.
 
-**Rationale:** The original `/ingest` design implied an arbitrary URL ingestion endpoint, which would be a significant attack surface and require robust sandboxing. Scoping to a known internal script is safer and sufficient for the pilot. Adding Bearer token auth was necessary since the endpoint triggers an active server-side process.
+**Rationale:** The original `/ingest` design implied an arbitrary URL ingestion endpoint, which would be a significant attack surface and require robust sandboxing. Restricting ingestion to predefined internal batches is safer and better aligned with routine operations. Adding Bearer token auth was necessary since the endpoint triggers active server-side processes.
 
 ---
 
@@ -227,12 +227,12 @@ This document traces every significant decision from the original design doc thr
 | CampusEvents table | ⚠️ Evolved | Dedicated relational table | Events stored in Documents table with `source_type='Events'` |
 | LLM provider | ⚠️ Evolved | Cloud frontier model (Claude/GPT-4o) | Local Ollama (`llama3.1:8b`); OpenAI as fallback |
 | Embedding model | ⚠️ Evolved | OpenAI `text-embedding-3-small` | `nomic-embed-text` via Ollama; OpenAI as fallback |
-| Infrastructure cost | ⚠️ Evolved | ~$50/month | ~$25/month (AI costs eliminated via DGX Spark) |
+| Infrastructure cost | ⚠️ Evolved | ~$50/month | $0/month (local-only runtime on campus/local infrastructure) |
 | Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 official final threshold |
 | Dining data | ⚠️ Evolved | Daily Playwright scraping | Daily scheduled `dining-manual.js` ingestion + hardcoded fallback when retrieval has no Dining chunks |
 | Conversation memory | ⚠️ Evolved | Table described, mechanism unspecified | Last 5 turns injected into LLM message array |
 | `/ingest` auth | ⚠️ Evolved | None specified | Bearer token (`ADMIN_TOKEN`) required |
-| `/ingest` scope | ⚠️ Evolved | General-purpose URL ingestion | Scoped to `source_type: "Admin"` only |
+| `/ingest` scope | ⚠️ Evolved | General-purpose URL ingestion | Controlled batch trigger (`daily` / `weekly` / `monthly`) with legacy `source_type: "Admin"` fallback |
 | `/status` data source | ⚠️ Evolved | `CampusEvents` table | `Documents` table filtered by `source_type='Events'` |
 | Observability logs | ⚠️ Evolved | LLM fields only specified | Extended to retrieval logs with matching schema |
 | CRON scheduling | ⚠️ Evolved | Daily automated re-ingestion | Batch runner + documented Task Scheduler/cron automation (`daily`, `weekly`, `monthly`) |

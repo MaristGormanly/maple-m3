@@ -17,6 +17,7 @@
  *                      assistant response (or a friendly error message on failure)
  *  - handleKeydown() — submits on Enter (without Shift) for natural chat UX
  *  - scrollToBottom()— called after every view check to keep the latest message visible
+ *  - starterChips / showStarterChips / sendSuggestedPrompt() — first-run suggestion chips
  *
  * Template and styles are in app.component.html and app.component.scss respectively.
  * Depends on: CampusApiService, MarkdownPipe, ChatMessage type.
@@ -51,6 +52,18 @@ export class AppComponent implements AfterViewChecked, OnInit {
   ];
   isLoading: boolean = false;
   conversationId: string | null = null;
+
+  /** Shown below the welcome message until the user sends their first message. */
+  readonly starterChips: ReadonlyArray<{ label: string; prompt: string }> = [
+    { label: 'Library', prompt: 'What can I do at the library?' },
+    { label: 'Dining', prompt: 'Where can I find dining options and hours on campus?' },
+    { label: 'IT', prompt: 'How do I connect to the wifi?' },
+    { label: 'Events', prompt: 'What campus events are coming up?' }
+  ];
+
+  get showStarterChips(): boolean {
+    return !this.isLoading && !this.messages.some((m) => m.role === 'user');
+  }
 
   constructor(
     private campusApi: CampusApiService,
@@ -87,6 +100,13 @@ export class AppComponent implements AfterViewChecked, OnInit {
     try {
       this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight;
     } catch(err) {}
+  }
+
+  sendSuggestedPrompt(prompt: string): void {
+    const text = prompt.trim();
+    if (!text || this.isLoading) return;
+    this.userInput = text;
+    this.sendMessage();
   }
 
   sendMessage() {

@@ -15,6 +15,7 @@
         colour-coded via CSS class binding
       - A .sources-list renders the cited source links returned by the backend
     A separate .loading-indicator row (three animated dots) is shown while isLoading is true.
+    Before the first user message, a .starter-chips block offers topic shortcuts.
 
   <footer class="chat-input-area">
     Textarea bound to userInput with Enter-to-send via handleKeydown().
@@ -80,6 +81,24 @@
             </ul>
           </div>
   
+        </div>
+      </div>
+
+      <div
+        class="starter-chips"
+        *ngIf="showStarterChips"
+        role="region"
+        aria-label="Suggested questions">
+        <p class="starter-chips-label">Try asking…</p>
+        <div class="starter-chips-row">
+          <button
+            type="button"
+            class="starter-chip"
+            *ngFor="let chip of starterChips"
+            (click)="sendSuggestedPrompt(chip.prompt)"
+            [attr.aria-label]="'Ask: ' + chip.prompt">
+            {{ chip.label }}
+          </button>
         </div>
       </div>
   

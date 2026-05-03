@@ -16,6 +16,7 @@
  *  .sources-list            — citation block below assistant responses
  *  .chat-input-area         — sticky footer with textarea + Send button + feedback link
  *  .loading-indicator       — three-dot bounce animation shown while isLoading is true
+ *  .starter-chips           — first-run topic chips (Library, Dining, IT, Events)
  */
 :host {
     display: block;
@@ -98,6 +99,51 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+  }
+
+  .starter-chips {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 0 0 0.25rem 0;
+  }
+
+  .starter-chips-label {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+  }
+
+  .starter-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .starter-chip {
+    appearance: none;
+    border: 1px solid var(--input-border);
+    background: var(--bubble-assistant-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      border-color: var(--send-bg);
+      background: var(--starter-chip-hover-bg);
+      box-shadow: var(--starter-chip-hover-shadow);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--send-bg);
+      outline-offset: 2px;
+    }
   }
   
   .message-wrapper {

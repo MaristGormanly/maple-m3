@@ -1,0 +1,26 @@
+Goal: Ship a full pass of Angular chat UX for MAPLE M3: trust-oriented sources UI with numeric citations, accessibility-friendly chrome (icons, theme, timestamps), onboarding chips, mailto for emails, reliable scroll-to-latest after replies, motion and loading expectations, and productivity actions (copy answer, new chat). Align citation behavior with the backend context format and design/reconciliation docs where needed.
+
+AI Tool Used: Cursor IDE
+
+Prompt Engineering Tactics Used:
+- End-to-End Citation Contract: Tied in-answer [n] markers, ordered `sources[]`, and injected RAG context prefixes in `chat.js` so the model, API payload, and UI anchors stay in one numbering scheme.
+- Progressive UX Layering: Landed foundational layout (timestamps, theme, avatars, chips) before higher-order behaviors (citations panel, clipboard, scroll timing, motion) to avoid thrashing shared templates and styles.
+- Motion and A11y Guardrails: Scoped enter animations and dot loaders behind `prefers-reduced-motion`, and kept loading copy optional on an alternating beat so latency expectations stay clear without noisy always-on text.
+
+Prompts Used:
+1. "Implement: Sources as first-class UI: Numbered citations in the answer that match [1] [2] in a collapsible 'Sources' block (or inline footnote style) makes scanning faster than a list-only block at the bottom."
+2. "Implement: Copy answer: One-click copy on assistant bubbles (especially for hours, links, and instructions). Clear conversation: Resets conversationId and messages so users can start a new topic without stale context."
+3. "Implement: Message enter animation: Very short fade/slide on new bubbles (respect prefers-reduced-motion) makes the thread feel alive without being flashy. Loading state: Dots are fine; alternating with a short 'Searching campus docs…' line sets expectations for latency."
+
+Results & Refinements:
+- Sources / citations:
+  - Client: `AssistantMarkdownPipe` linkifies valid `[n]` to fragment targets; assistant bubbles use a collapsible numbered `<details>` list; `main-system-prompt.md` and `chat.js` context blocks use matching `[1]`, `[2]` prefixes in chunk order.
+  - Docs: MAPLE M3 design doc and reconciliation updated for numeric citation output and UI (earlier same effort).
+
+- Trust and utility:
+  - Copy assistant answer (plus optional Sources block as plain text); New chat resets welcome thread and `conversationId` for fresh server context (disabled while loading).
+  - Starter chips (“Try asking…”) until the first user message; Material Symbols for header mark and avatars; light/dark theme with persistence.
+
+- Polish and robustness:
+  - `linkifyEmailsInMarkdown` before `marked` so backtick-wrapped or bare emails become `mailto` links; deferred double-`requestAnimationFrame` scroll after send/response so markdown layout height is correct.
+  - Loading row alternates “Searching campus docs…” with dots; short bubble enter animation keyed off `animateEnter` with reduced-motion fast path.

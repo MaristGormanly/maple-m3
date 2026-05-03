@@ -18,6 +18,7 @@
  *  - handleKeydown() — submits on Enter (without Shift) for natural chat UX
  *  - scheduleScrollToBottom() — defers scroll until after layout so markdown / sources height is final
  *  - starterChips / showStarterChips / sendSuggestedPrompt() — first-run suggestion chips
+ *  - copyAssistantAnswer() / clearConversation() — copy reply + reset thread (conversationId)
  *
  * Template and styles are in app.component.html and app.component.scss respectively.
  * Depends on: CampusApiService, MarkdownPipe, AssistantMarkdownPipe, ChatMessage type.
@@ -40,8 +41,12 @@ import { AssistantMarkdownPipe } from './pipes/assistant-markdown.pipe';
 export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
 
+  private static readonly WELCOME_TEXT =
+    'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.';
+
   private readonly THEME_STORAGE_KEY = 'maple-m3-theme'; // 'dark' | 'light'
   private loadingCaptionInterval: ReturnType<typeof setInterval> | null = null;
+  private copyConfirmTimer: ReturnType<typeof setTimeout> | null = null;
 
   private readonly enterAnimNames = new Set(['msg-enter-user', 'msg-enter-assistant']);
 
@@ -50,11 +55,14 @@ export class AppComponent implements OnInit, OnDestroy {
   /** Toggles with dots while waiting for the assistant (sets expectation for latency). */
   loadingShowCaption = false;
 
+  /** Which message index last showed “Copied” after copy (cleared after a short delay). */
+  copyConfirmMsgIndex: number | null = null;
+
   userInput: string = '';
   messages: ChatMessage[] = [
     {
       role: 'assistant',
-      content: 'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.',
+      content: AppComponent.WELCOME_TEXT,
       timestamp: new Date().toISOString()
     }
   ];
@@ -71,6 +79,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   get showStarterChips(): boolean {
     return !this.isLoading && !this.messages.some((m) => m.role === 'user');
+  }
+
+  get canClearChat(): boolean {
+    return !this.isLoading && (this.messages.length > 1 || this.conversationId != null);
   }
 
   constructor(
@@ -102,6 +114,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopLoadingCaptionAlternate();
+    if (this.copyConfirmTimer !== null) {
+      clearTimeout(this.copyConfirmTimer);
+      this.copyConfirmTimer = null;
+    }
   }
 
   scrollToBottom(): void {
@@ -151,6 +167,76 @@ export class AppComponent implements OnInit, OnDestroy {
       this.loadingCaptionInterval = null;
     }
     this.loadingShowCaption = false;
+  }
+
+  copyAssistantAnswer(msg: ChatMessage, msgIndex: number): void {
+    if (msg.role !== 'assistant' || !msg.content?.trim()) return;
+
+    let text = msg.content.trim();
+    if (msg.sources?.length && !msg.isError) {
+      text +=
+        '\n\nSources:\n' +
+        msg.sources.map((s, i) => `${i + 1}. ${s.title} — ${s.url}`).join('\n');
+    }
+
+    this.writeClipboard(text)
+      .then(() => {
+        this.zone.run(() => {
+          this.copyConfirmMsgIndex = msgIndex;
+          if (this.copyConfirmTimer !== null) clearTimeout(this.copyConfirmTimer);
+          this.copyConfirmTimer = setTimeout(() => {
+            this.copyConfirmMsgIndex = null;
+            this.cdr.markForCheck();
+          }, 2000);
+          this.cdr.markForCheck();
+        });
+      })
+      .catch(() => {
+        /* clipboard denied or unavailable */
+      });
+  }
+
+  clearConversation(): void {
+    if (!this.canClearChat) return;
+    this.messages = [
+      {
+        role: 'assistant',
+        content: AppComponent.WELCOME_TEXT,
+        timestamp: new Date().toISOString()
+      }
+    ];
+    this.conversationId = null;
+    this.userInput = '';
+    this.copyConfirmMsgIndex = null;
+    if (this.copyConfirmTimer !== null) {
+      clearTimeout(this.copyConfirmTimer);
+      this.copyConfirmTimer = null;
+    }
+    this.cdr.detectChanges();
+    this.scheduleScrollToBottom();
+  }
+
+  private writeClipboard(text: string): Promise<void> {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        const ta = this.document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        this.document.body.appendChild(ta);
+        ta.select();
+        const ok = this.document.execCommand('copy');
+        this.document.body.removeChild(ta);
+        if (ok) resolve();
+        else reject(new Error('execCommand copy failed'));
+      } catch (e) {
+        reject(e);
+      }
+    });
   }
 
   sendSuggestedPrompt(prompt: string): void {

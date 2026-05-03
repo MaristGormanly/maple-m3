@@ -4,7 +4,7 @@
   Three-section layout (flex column, full viewport height):
 
   <header class="chat-header">
-    Top bar with MAPLE title, eco (leaf) Material Symbol, and module subtitle.
+    Top bar: brand, New chat (resets thread), theme toggle.
 
   <main class="chat-window" #scrollMe>
     Scrollable message list. Iterates over messages[] and renders each turn as a
@@ -30,14 +30,24 @@
         <h1>MAPLE</h1>
         <span class="brand-subtitle">Campus Navigator</span>
       </div>
-      <button
-        type="button"
-        class="theme-toggle"
-        (click)="toggleDarkMode()"
-        [attr.aria-pressed]="darkMode"
-        [attr.title]="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
-        {{ darkMode ? 'Light mode' : 'Dark mode' }}
-      </button>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="clear-chat-btn"
+          (click)="clearConversation()"
+          [disabled]="!canClearChat"
+          title="Start over with a new topic (clears chat history on the server for your next message)">
+          New chat
+        </button>
+        <button
+          type="button"
+          class="theme-toggle"
+          (click)="toggleDarkMode()"
+          [attr.aria-pressed]="darkMode"
+          [attr.title]="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+          {{ darkMode ? 'Light mode' : 'Dark mode' }}
+        </button>
+      </div>
     </header>
   
     <main class="chat-window" #scrollMe>
@@ -54,7 +64,25 @@
         </div>
   
         <div class="message-content" [class.error-msg]="msg.isError">
-          <div class="message-time" *ngIf="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</div>
+          <div class="message-meta assistant-meta" *ngIf="msg.role === 'assistant'">
+            <div class="message-time" *ngIf="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</div>
+            <button
+              type="button"
+              class="copy-answer-btn"
+              (click)="copyAssistantAnswer(msg, msgIndex)"
+              [disabled]="!msg.content.trim()"
+              [attr.aria-label]="
+                copyConfirmMsgIndex === msgIndex ? 'Answer copied' : 'Copy answer to clipboard'
+              ">
+              <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+              <span class="copy-answer-label">{{
+                copyConfirmMsgIndex === msgIndex ? 'Copied' : 'Copy'
+              }}</span>
+            </button>
+          </div>
+          <div class="message-time" *ngIf="msg.role === 'user' && msg.timestamp">
+            {{ formatMessageTime(msg.timestamp) }}
+          </div>
 
           <!-- Markdown: assistant replies use citation linkify + markdown -->
           <div

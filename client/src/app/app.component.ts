@@ -40,7 +40,11 @@ export class AppComponent implements AfterViewChecked {
 
   userInput: string = '';
   messages: ChatMessage[] = [
-    { role: 'assistant', content: 'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.' }
+    {
+      role: 'assistant',
+      content: 'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.',
+      timestamp: new Date().toISOString()
+    }
   ];
   isLoading: boolean = false;
   conversationId: string | null = null;
@@ -65,7 +69,7 @@ export class AppComponent implements AfterViewChecked {
     if (!this.userInput.trim() || this.isLoading) return;
 
     const userText = this.userInput.trim();
-    this.messages.push({ role: 'user', content: userText });
+    this.messages.push({ role: 'user', content: userText, timestamp: new Date().toISOString() });
     this.userInput = '';
     this.isLoading = true;
 
@@ -93,7 +97,8 @@ export class AppComponent implements AfterViewChecked {
 
           this.messages.push({ 
             role: 'assistant', 
-            content: friendlyMessage 
+            content: friendlyMessage,
+            timestamp: new Date().toISOString()
           });
           
           this.isLoading = false;
@@ -108,5 +113,17 @@ export class AppComponent implements AfterViewChecked {
       event.preventDefault();
       this.sendMessage();
     }
+  }
+
+  formatMessageTime(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
 }

@@ -72,6 +72,8 @@ export interface ChatSource {
   export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
+    /** ISO 8601 instant when the message was created (client or server). */
+    timestamp?: string;
     sources?: ChatSource[];
     confidence?: 'high' | 'medium' | 'low' | 'none';
     freshness?: DataFreshness;

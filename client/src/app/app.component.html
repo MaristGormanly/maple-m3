@@ -38,7 +38,8 @@
         </div>
   
         <div class="message-content" [class.error-msg]="msg.isError">
-          
+          <div class="message-time" *ngIf="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</div>
+
           <!-- Markdown Rendered Content -->
           <div class="text" [innerHTML]="msg.content | markdown"></div>
   

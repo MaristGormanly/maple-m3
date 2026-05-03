@@ -4,7 +4,7 @@
   Three-section layout (flex column, full viewport height):
 
   <header class="chat-header">
-    Top bar with the MAPLE logo and module subtitle.
+    Top bar with MAPLE title, eco (leaf) Material Symbol, and module subtitle.
 
   <main class="chat-window" #scrollMe>
     Scrollable message list. Iterates over messages[] and renders each turn as a
@@ -24,8 +24,9 @@
 <div class="chat-layout">
     <header class="chat-header">
       <div class="brand">
-        <h1>🍁 MAPLE</h1>
-        <span>Campus Navigator</span>
+        <span class="material-symbols-outlined brand-mark" aria-hidden="true">eco</span>
+        <h1>MAPLE</h1>
+        <span class="brand-subtitle">Campus Navigator</span>
       </div>
       <button
         type="button"
@@ -40,9 +41,9 @@
     <main class="chat-window" #scrollMe>
       <div class="message-wrapper" *ngFor="let msg of messages" [ngClass]="msg.role">
         
-        <!-- Avatar -->
-        <div class="avatar">
-          {{ msg.role === 'assistant' ? '🤖' : '👤' }}
+        <!-- Avatar (Material Symbols via Google Fonts) -->
+        <div class="avatar" aria-hidden="true">
+          <span class="material-symbols-outlined">{{ msg.role === 'assistant' ? 'support_agent' : 'person' }}</span>
         </div>
   
         <div class="message-content" [class.error-msg]="msg.isError">
@@ -84,7 +85,9 @@
   
       <!-- Loading Indicator -->
       <div class="message-wrapper assistant" *ngIf="isLoading">
-        <div class="avatar">🤖</div>
+        <div class="avatar" aria-hidden="true">
+          <span class="material-symbols-outlined">support_agent</span>
+        </div>
         <div class="message-content loading-indicator">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
         </div>

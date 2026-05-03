@@ -78,6 +78,11 @@ app-root {
   --fresh-bg: #fff8e1;
   --fresh-text: #7a3e00;
   --fresh-border: #f57c00;
+
+  --avatar-user-bg: #e5e7eb;
+  --avatar-user-icon: #374151;
+  --avatar-assistant-bg: rgba(200, 16, 46, 0.12);
+  --avatar-assistant-icon: #c8102e;
 }
 
 html.theme-dark {
@@ -130,5 +135,32 @@ html.theme-dark {
   --fresh-bg: rgba(251, 191, 36, 0.12);
   --fresh-text: #fde68a;
   --fresh-border: #fbbf24;
+
+  --avatar-user-bg: #374151;
+  --avatar-user-icon: #e5e7eb;
+  --avatar-assistant-bg: rgba(248, 113, 113, 0.18);
+  --avatar-assistant-icon: #fda4af;
+}
+
+/* Google Material Symbols (Outlined) — used for header + chat avatars */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 1.25rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
 }
 

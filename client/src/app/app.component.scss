@@ -46,17 +46,29 @@
     
     .brand {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 0.5rem;
+      min-width: 0;
+
+      .brand-mark {
+        font-size: 1.65rem;
+        flex-shrink: 0;
+        opacity: 0.95;
+      }
       
       h1 {
         margin: 0;
         font-size: 1.5rem;
         font-weight: 700;
+        line-height: 1;
       }
-      span {
+      .brand-subtitle {
         font-size: 1rem;
         opacity: 0.9;
+        margin-left: 0.25rem;
+        padding-left: 0.65rem;
+        border-left: 1px solid rgba(255, 255, 255, 0.35);
+        line-height: 1.2;
       }
     }
 
@@ -116,8 +128,28 @@
     }
   
     .avatar {
-      font-size: 1.5rem;
+      flex-shrink: 0;
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       align-self: flex-end;
+
+      .material-symbols-outlined {
+        font-size: 1.2rem;
+      }
+    }
+
+    &.user .avatar {
+      background: var(--avatar-user-bg);
+      color: var(--avatar-user-icon);
+    }
+
+    &.assistant .avatar {
+      background: var(--avatar-assistant-bg);
+      color: var(--avatar-assistant-icon);
     }
   }
   

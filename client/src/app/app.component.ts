@@ -16,13 +16,13 @@
  *  - sendMessage()   — pushes the user message, calls CampusApiService, appends the
  *                      assistant response (or a friendly error message on failure)
  *  - handleKeydown() — submits on Enter (without Shift) for natural chat UX
- *  - scrollToBottom()— called after every view check to keep the latest message visible
+ *  - scheduleScrollToBottom() — defers scroll until after layout so markdown / sources height is final
  *  - starterChips / showStarterChips / sendSuggestedPrompt() — first-run suggestion chips
  *
  * Template and styles are in app.component.html and app.component.scss respectively.
  * Depends on: CampusApiService, MarkdownPipe, AssistantMarkdownPipe, ChatMessage type.
  */
-import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone, OnInit, Inject } from '@angular/core';
+import { Component, ViewChild, ElementRef, ChangeDetectorRef, NgZone, OnInit, Inject } from '@angular/core';
 import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
@@ -37,7 +37,7 @@ import { AssistantMarkdownPipe } from './pipes/assistant-markdown.pipe';
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent implements AfterViewChecked, OnInit {
+export class AppComponent implements OnInit {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
 
   private readonly THEME_STORAGE_KEY = 'maple-m3-theme'; // 'dark' | 'light'
@@ -93,14 +93,20 @@ export class AppComponent implements AfterViewChecked, OnInit {
     this.applyTheme(prefersDark);
   }
 
-  ngAfterViewChecked() {
-    this.scrollToBottom();
-  }
-
   scrollToBottom(): void {
     try {
-      this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight;
-    } catch(err) {}
+      const el = this.myScrollContainer.nativeElement;
+      el.scrollTop = el.scrollHeight;
+    } catch {
+      /* view not ready */
+    }
+  }
+
+  /** Waits for paint/layout so innerHTML (markdown) has updated scrollHeight before scrolling. */
+  private scheduleScrollToBottom(): void {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.scrollToBottom());
+    });
   }
 
   sendSuggestedPrompt(prompt: string): void {
@@ -117,6 +123,8 @@ export class AppComponent implements AfterViewChecked, OnInit {
     this.messages.push({ role: 'user', content: userText, timestamp: new Date().toISOString() });
     this.userInput = '';
     this.isLoading = true;
+    this.cdr.detectChanges();
+    this.scheduleScrollToBottom();
 
     this.campusApi.sendMessage(userText, this.conversationId).subscribe({
       next: (responseMsg) => {
@@ -127,6 +135,7 @@ export class AppComponent implements AfterViewChecked, OnInit {
           }
           this.isLoading = false;
           this.cdr.detectChanges();
+          this.scheduleScrollToBottom();
         });
       },
       error: (err) => {
@@ -148,6 +157,7 @@ export class AppComponent implements AfterViewChecked, OnInit {
           
           this.isLoading = false;
           this.cdr.detectChanges();
+          this.scheduleScrollToBottom();
         });
       }
     });

@@ -1,13 +1,15 @@
 /**
  * client/src/app/pipes/assistant-markdown.pipe.ts — Assistant reply markdown + citations
  *
- * Like MarkdownPipe but, when sources exist, turns bracketed numeric refs [1], [2] into
- * superscript links targeting #cite-{messageIndex}-{n} in the collapsible sources list.
+ * Like MarkdownPipe but runs linkifyEmailsInMarkdown first, then (when sources exist)
+ * turns bracketed numeric refs [1], [2] into superscript links targeting
+ * #cite-{messageIndex}-{n} in the collapsible sources list.
  */
 import { Pipe, PipeTransform } from '@angular/core';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ChatSource } from '../types/chat.types';
+import { linkifyEmailsInMarkdown } from '../utils/linkify-emails';
 
 @Pipe({
   name: 'assistantMarkdown',
@@ -22,8 +24,11 @@ export class AssistantMarkdownPipe implements PipeTransform {
     if (!value) return '';
     const list = sources ?? [];
     const idx = messageIndex ?? 0;
+    const withEmails = linkifyEmailsInMarkdown(value);
     const md =
-      list.length > 0 ? this.linkifyNumericCitations(value, list.length, idx) : value;
+      list.length > 0
+        ? this.linkifyNumericCitations(withEmails, list.length, idx)
+        : withEmails;
     const rawHtml = marked.parse(md) as string;
     return DOMPurify.sanitize(rawHtml);
   }

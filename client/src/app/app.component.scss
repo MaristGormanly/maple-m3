@@ -222,6 +222,11 @@
       ::ng-deep p:last-child { margin-bottom: 0; }
       ::ng-deep a { color: var(--link-md); text-decoration: none; font-weight: 500; }
       ::ng-deep a:hover { text-decoration: underline; }
+      ::ng-deep a[href^='mailto:'] {
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: 500;
+      }
       ::ng-deep ul { margin: 0.5rem 0; padding-left: 1.5rem; }
 
       ::ng-deep sup.cite-ref {

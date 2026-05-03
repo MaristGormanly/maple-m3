@@ -22,7 +22,7 @@
  * Template and styles are in app.component.html and app.component.scss respectively.
  * Depends on: CampusApiService, MarkdownPipe, AssistantMarkdownPipe, ChatMessage type.
  */
-import { Component, ViewChild, ElementRef, ChangeDetectorRef, NgZone, OnInit, Inject } from '@angular/core';
+import { Component, ViewChild, ElementRef, ChangeDetectorRef, NgZone, OnInit, OnDestroy, Inject } from '@angular/core';
 import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
@@ -37,11 +37,18 @@ import { AssistantMarkdownPipe } from './pipes/assistant-markdown.pipe';
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
 
   private readonly THEME_STORAGE_KEY = 'maple-m3-theme'; // 'dark' | 'light'
+  private loadingCaptionInterval: ReturnType<typeof setInterval> | null = null;
+
+  private readonly enterAnimNames = new Set(['msg-enter-user', 'msg-enter-assistant']);
+
   darkMode = false;
+
+  /** Toggles with dots while waiting for the assistant (sets expectation for latency). */
+  loadingShowCaption = false;
 
   userInput: string = '';
   messages: ChatMessage[] = [
@@ -93,6 +100,10 @@ export class AppComponent implements OnInit {
     this.applyTheme(prefersDark);
   }
 
+  ngOnDestroy(): void {
+    this.stopLoadingCaptionAlternate();
+  }
+
   scrollToBottom(): void {
     try {
       const el = this.myScrollContainer.nativeElement;
@@ -109,6 +120,39 @@ export class AppComponent implements OnInit {
     });
   }
 
+  onMessageEnterAnimationEnd(msg: ChatMessage, event: AnimationEvent): void {
+    if (event.target !== event.currentTarget) return;
+    if (!this.enterAnimNames.has(event.animationName)) return;
+    msg.animateEnter = false;
+    this.cdr.markForCheck();
+  }
+
+  private clearEnterIfReducedMotion(msg: ChatMessage): void {
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    queueMicrotask(() => {
+      msg.animateEnter = false;
+      this.cdr.markForCheck();
+    });
+  }
+
+  private startLoadingCaptionAlternate(): void {
+    this.stopLoadingCaptionAlternate();
+    this.loadingShowCaption = false;
+    this.loadingCaptionInterval = setInterval(() => {
+      this.loadingShowCaption = !this.loadingShowCaption;
+      this.cdr.markForCheck();
+    }, 2400);
+  }
+
+  private stopLoadingCaptionAlternate(): void {
+    if (this.loadingCaptionInterval !== null) {
+      clearInterval(this.loadingCaptionInterval);
+      this.loadingCaptionInterval = null;
+    }
+    this.loadingShowCaption = false;
+  }
+
   sendSuggestedPrompt(prompt: string): void {
     const text = prompt.trim();
     if (!text || this.isLoading) return;
@@ -120,16 +164,27 @@ export class AppComponent implements OnInit {
     if (!this.userInput.trim() || this.isLoading) return;
 
     const userText = this.userInput.trim();
-    this.messages.push({ role: 'user', content: userText, timestamp: new Date().toISOString() });
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: userText,
+      timestamp: new Date().toISOString(),
+      animateEnter: true
+    };
+    this.messages.push(userMsg);
+    this.clearEnterIfReducedMotion(userMsg);
     this.userInput = '';
     this.isLoading = true;
+    this.startLoadingCaptionAlternate();
     this.cdr.detectChanges();
     this.scheduleScrollToBottom();
 
     this.campusApi.sendMessage(userText, this.conversationId).subscribe({
       next: (responseMsg) => {
         this.zone.run(() => {
-          this.messages.push(responseMsg);
+          this.stopLoadingCaptionAlternate();
+          const assistantMsg: ChatMessage = { ...responseMsg, animateEnter: true };
+          this.messages.push(assistantMsg);
+          this.clearEnterIfReducedMotion(assistantMsg);
           if (responseMsg.conversationId) {
             this.conversationId = responseMsg.conversationId;
           }
@@ -140,6 +195,7 @@ export class AppComponent implements OnInit {
       },
       error: (err) => {
         this.zone.run(() => {
+          this.stopLoadingCaptionAlternate();
           // REVISED: Provide a fallback message in the UI so the user isn't stuck
           console.error('API Error:', err);
           
@@ -149,12 +205,15 @@ export class AppComponent implements OnInit {
              friendlyMessage = "I couldn't find any documents related to that request. Try asking about a different campus topic.";
           }
 
-          this.messages.push({ 
-            role: 'assistant', 
+          const errMsg: ChatMessage = {
+            role: 'assistant',
             content: friendlyMessage,
-            timestamp: new Date().toISOString()
-          });
-          
+            timestamp: new Date().toISOString(),
+            animateEnter: true
+          };
+          this.messages.push(errMsg);
+          this.clearEnterIfReducedMotion(errMsg);
+
           this.isLoading = false;
           this.cdr.detectChanges();
           this.scheduleScrollToBottom();

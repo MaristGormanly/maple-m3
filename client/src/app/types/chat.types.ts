@@ -79,4 +79,6 @@ export interface ChatSource {
     freshness?: DataFreshness;
     conversationId?: string;
     isError?: boolean;
+    /** When true, plays one-shot enter animation (cleared after animation or if reduced motion). */
+    animateEnter?: boolean;
   }

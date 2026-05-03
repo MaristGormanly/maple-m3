@@ -14,7 +14,8 @@
       - A .confidence-badge shows the retrieval confidence level (high / medium / low / none)
         colour-coded via CSS class binding
       - Numeric [1] [2] in assistant text link to a collapsible numbered Sources list
-    A separate .loading-indicator row (three animated dots) is shown while isLoading is true.
+    While isLoading, a loading row shows dots and alternates a “Searching campus docs…” caption.
+    New message bubbles use a short enter animation (respects prefers-reduced-motion).
     Before the first user message, a .starter-chips block offers topic shortcuts.
 
   <footer class="chat-input-area">
@@ -40,7 +41,12 @@
     </header>
   
     <main class="chat-window" #scrollMe>
-      <div class="message-wrapper" *ngFor="let msg of messages; let msgIndex = index" [ngClass]="msg.role">
+      <div
+        class="message-wrapper"
+        *ngFor="let msg of messages; let msgIndex = index"
+        [ngClass]="msg.role"
+        [class.message-enter]="msg.animateEnter === true"
+        (animationend)="onMessageEnterAnimationEnd(msg, $event)">
         
         <!-- Avatar (Material Symbols via Google Fonts) -->
         <div class="avatar" aria-hidden="true">
@@ -111,12 +117,20 @@
       </div>
   
       <!-- Loading Indicator -->
-      <div class="message-wrapper assistant" *ngIf="isLoading">
+      <div
+        class="message-wrapper assistant loading-row"
+        *ngIf="isLoading"
+        role="status"
+        aria-live="polite"
+        [attr.aria-busy]="true">
         <div class="avatar" aria-hidden="true">
           <span class="material-symbols-outlined">support_agent</span>
         </div>
         <div class="message-content loading-indicator">
-          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <p class="loading-caption" *ngIf="loadingShowCaption">Searching campus docs…</p>
+          <div class="loading-dots" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          </div>
         </div>
       </div>
     </main>

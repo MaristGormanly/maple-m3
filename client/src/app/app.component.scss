@@ -15,7 +15,8 @@
  *  .confidence-badge        — colour-coded pill: green (high), amber (medium), red (low/none)
  *  .sources-panel           — collapsible numbered sources (anchors for [n] links)
  *  .chat-input-area         — sticky footer with textarea + Send button + feedback link
- *  .loading-indicator       — three-dot bounce animation shown while isLoading is true
+ *  .loading-indicator       — dots + alternating “Searching campus docs…” while isLoading
+ *  .message-enter           — short fade/slide for new bubbles (honors prefers-reduced-motion)
  *  .starter-chips           — first-run topic chips (Library, Dining, IT, Events)
  */
 :host {
@@ -196,6 +197,38 @@
     &.assistant .avatar {
       background: var(--avatar-assistant-bg);
       color: var(--avatar-assistant-icon);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .message-wrapper.message-enter.user {
+      animation: msg-enter-user 0.22s ease-out both;
+    }
+
+    .message-wrapper.message-enter.assistant {
+      animation: msg-enter-assistant 0.22s ease-out both;
+    }
+  }
+
+  @keyframes msg-enter-assistant {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes msg-enter-user {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
   
@@ -412,24 +445,48 @@
     }
   }
   
-  // Loading Dots Animation
   .loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .loading-caption {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    max-width: 16rem;
+  }
+
+  .loading-dots {
     display: flex;
     gap: 4px;
     align-items: center;
-    padding: 1rem 1.5rem;
-    
+
     .dot {
       width: 8px;
       height: 8px;
       background: var(--dot);
       border-radius: 50%;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .loading-dots .dot {
       animation: bounce 1.4s infinite ease-in-out both;
     }
-    .dot:nth-child(1) { animation-delay: -0.32s; }
-    .dot:nth-child(2) { animation-delay: -0.16s; }
+    .loading-dots .dot:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    .loading-dots .dot:nth-child(2) {
+      animation-delay: -0.16s;
+    }
   }
-  
+
   @keyframes bounce {
     0%, 80%, 100% { transform: scale(0); }
     40% { transform: scale(1); }

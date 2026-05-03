@@ -19,8 +19,9 @@
  */
 :host {
     display: block;
-    height: 100vh;
-    background-color: #f4f6f8;
+    height: 100%;
+    background-color: var(--page-bg);
+    color: var(--text-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   }
   
@@ -30,14 +31,18 @@
     height: 100%;
     max-width: 900px;
     margin: 0 auto;
-    background: #ffffff;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    background: var(--chat-surface);
+    box-shadow: var(--chat-shadow);
   }
   
   .chat-header {
-    background-color: #c8102e; // Marist Red
-    color: white;
+    background-color: var(--header-bg);
+    color: var(--header-text);
     padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     
     .brand {
       display: flex;
@@ -52,6 +57,24 @@
       span {
         font-size: 1rem;
         opacity: 0.9;
+      }
+    }
+
+    .theme-toggle {
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--header-text);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.55);
       }
     }
   }
@@ -75,8 +98,8 @@
       flex-direction: row-reverse;
   
       .message-content {
-        background-color: #f0f0f0;
-        color: #333;
+        background-color: var(--bubble-user-bg);
+        color: var(--bubble-user-text);
         border-radius: 12px 12px 0 12px;
       }
     }
@@ -85,10 +108,10 @@
       align-self: flex-start;
   
       .message-content {
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
+        background-color: var(--bubble-assistant-bg);
+        border: 1px solid var(--bubble-assistant-border);
         border-radius: 12px 12px 12px 0;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        box-shadow: var(--bubble-assistant-shadow);
       }
     }
   
@@ -103,14 +126,14 @@
 
     .message-time {
       font-size: 0.72rem;
-      color: #6b7280;
+      color: var(--text-secondary);
       margin-bottom: 0.4rem;
       line-height: 1.2;
     }
     
     &.error-msg {
-      border-left: 4px solid #d32f2f;
-      background-color: #fff8f8;
+      border-left: 4px solid var(--error-border);
+      background-color: var(--error-bg);
     }
   
     .text {
@@ -119,7 +142,7 @@
       // Markdown styling resets
       ::ng-deep p { margin-top: 0; margin-bottom: 0.5rem; }
       ::ng-deep p:last-child { margin-bottom: 0; }
-      ::ng-deep a { color: #c8102e; text-decoration: none; font-weight: 500; }
+      ::ng-deep a { color: var(--link-md); text-decoration: none; font-weight: 500; }
       ::ng-deep a:hover { text-decoration: underline; }
       ::ng-deep ul { margin: 0.5rem 0; padding-left: 1.5rem; }
     }
@@ -136,17 +159,17 @@
     border-radius: 4px;
     margin-top: 0.75rem;
     
-    &.high { background: #e8f5e9; color: #2e7d32; }
-    &.medium { background: #fff3e0; color: #e65100; }
-    &.low, &.none { background: #ffebee; color: #c62828; }
+    &.high { background: var(--conf-high-bg); color: var(--conf-high-text); }
+    &.medium { background: var(--conf-med-bg); color: var(--conf-med-text); }
+    &.low, &.none { background: var(--conf-low-bg); color: var(--conf-low-text); }
   }
 
   .freshness-warning {
     margin-top: 0.75rem;
     padding: 0.6rem 0.75rem;
-    border-left: 4px solid #f57c00;
-    background: #fff8e1;
-    color: #7a3e00;
+    border-left: 4px solid var(--fresh-border);
+    background: var(--fresh-bg);
+    color: var(--fresh-text);
     font-size: 0.85rem;
     border-radius: 6px;
     line-height: 1.4;
@@ -163,10 +186,10 @@
   .sources-list {
     margin-top: 0.75rem;
     padding-top: 0.75rem;
-    border-top: 1px solid #eeeeee;
+    border-top: 1px solid var(--divider);
     font-size: 0.85rem;
   
-    strong { color: #555; }
+    strong { color: var(--text-primary); opacity: 0.85; }
     
     ul {
       list-style-type: none;
@@ -176,7 +199,7 @@
       li {
         margin-bottom: 0.25rem;
         a {
-          color: #1976d2;
+          color: var(--link-source);
           text-decoration: none;
           &:hover { text-decoration: underline; }
         }
@@ -187,8 +210,8 @@
   // Input Area
   .chat-input-area {
     padding: 1rem 1.5rem;
-    background: #ffffff;
-    border-top: 1px solid #e0e0e0;
+    background: var(--footer-bg);
+    border-top: 1px solid var(--footer-border);
   
     .input-container {
       display: flex;
@@ -199,16 +222,18 @@
         flex: 1;
         resize: none;
         padding: 0.75rem;
-        border: 1px solid #ccc;
+        border: 1px solid var(--input-border);
         border-radius: 8px;
         font-family: inherit;
         font-size: 1rem;
         max-height: 120px;
+        background: var(--input-bg);
+        color: var(--input-text);
         &:focus { outline: none; border-color: #c8102e; }
       }
   
       button {
-        background: #c8102e;
+        background: var(--send-bg);
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
@@ -218,8 +243,8 @@
         cursor: pointer;
         transition: background 0.2s;
   
-        &:hover:not(:disabled) { background: #a00d24; }
-        &:disabled { background: #e0e0e0; cursor: not-allowed; }
+        &:hover:not(:disabled) { background: var(--send-bg-hover); }
+        &:disabled { background: var(--send-disabled); cursor: not-allowed; }
       }
     }
   
@@ -227,7 +252,7 @@
       text-align: center;
       margin-top: 0.75rem;
       font-size: 0.8rem;
-      a { color: #666; text-decoration: none; }
+      a { color: var(--text-muted); text-decoration: none; }
       a:hover { text-decoration: underline; }
     }
   }
@@ -242,7 +267,7 @@
     .dot {
       width: 8px;
       height: 8px;
-      background: #999;
+      background: var(--dot);
       border-radius: 50%;
       animation: bounce 1.4s infinite ease-in-out both;
     }

@@ -27,6 +27,14 @@
         <h1>🍁 MAPLE</h1>
         <span>Campus Navigator</span>
       </div>
+      <button
+        type="button"
+        class="theme-toggle"
+        (click)="toggleDarkMode()"
+        [attr.aria-pressed]="darkMode"
+        [attr.title]="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+        {{ darkMode ? 'Light mode' : 'Dark mode' }}
+      </button>
     </header>
   
     <main class="chat-window" #scrollMe>

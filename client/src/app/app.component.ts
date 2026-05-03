@@ -21,8 +21,8 @@
  * Template and styles are in app.component.html and app.component.scss respectively.
  * Depends on: CampusApiService, MarkdownPipe, ChatMessage type.
  */
-import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone, OnInit, Inject } from '@angular/core';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
 import { ChatMessage } from './types/chat.types';
@@ -35,8 +35,11 @@ import { MarkdownPipe } from './pipes/markdown.pipe';
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent implements AfterViewChecked {
+export class AppComponent implements AfterViewChecked, OnInit {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
+
+  private readonly THEME_STORAGE_KEY = 'maple-m3-theme'; // 'dark' | 'light'
+  darkMode = false;
 
   userInput: string = '';
   messages: ChatMessage[] = [
@@ -52,8 +55,29 @@ export class AppComponent implements AfterViewChecked {
   constructor(
     private campusApi: CampusApiService,
     private cdr: ChangeDetectorRef,
-    private zone: NgZone
+    private zone: NgZone,
+    @Inject(DOCUMENT) private document: Document
   ) {}
+
+  ngOnInit(): void {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(this.THEME_STORAGE_KEY);
+    } catch {
+      saved = null;
+    }
+
+    if (saved === 'dark' || saved === 'light') {
+      this.applyTheme(saved === 'dark');
+      return;
+    }
+
+    const prefersDark =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    this.applyTheme(prefersDark);
+  }
 
   ngAfterViewChecked() {
     this.scrollToBottom();
@@ -125,5 +149,20 @@ export class AppComponent implements AfterViewChecked {
       hour: 'numeric',
       minute: '2-digit'
     });
+  }
+
+  toggleDarkMode(): void {
+    this.applyTheme(!this.darkMode);
+  }
+
+  private applyTheme(isDark: boolean): void {
+    this.darkMode = isDark;
+    this.document.documentElement.classList.toggle('theme-dark', isDark);
+    try {
+      localStorage.setItem(this.THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+    } catch {
+      // ignore storage failures (private mode, etc.)
+    }
+    this.cdr.markForCheck();
   }
 }

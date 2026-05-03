@@ -13,7 +13,7 @@
       - Content is rendered as sanitized markdown via the MarkdownPipe ([innerHTML])
       - A .confidence-badge shows the retrieval confidence level (high / medium / low / none)
         colour-coded via CSS class binding
-      - A .sources-list renders the cited source links returned by the backend
+      - Numeric [1] [2] in assistant text link to a collapsible numbered Sources list
     A separate .loading-indicator row (three animated dots) is shown while isLoading is true.
     Before the first user message, a .starter-chips block offers topic shortcuts.
 
@@ -40,7 +40,7 @@
     </header>
   
     <main class="chat-window" #scrollMe>
-      <div class="message-wrapper" *ngFor="let msg of messages" [ngClass]="msg.role">
+      <div class="message-wrapper" *ngFor="let msg of messages; let msgIndex = index" [ngClass]="msg.role">
         
         <!-- Avatar (Material Symbols via Google Fonts) -->
         <div class="avatar" aria-hidden="true">
@@ -50,8 +50,10 @@
         <div class="message-content" [class.error-msg]="msg.isError">
           <div class="message-time" *ngIf="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</div>
 
-          <!-- Markdown Rendered Content -->
-          <div class="text" [innerHTML]="msg.content | markdown"></div>
+          <!-- Markdown: assistant replies use citation linkify + markdown -->
+          <div
+            class="text"
+            [innerHTML]="msg.role === 'assistant' ? (msg.content | assistantMarkdown:msg.sources:msgIndex) : (msg.content | markdown)"></div>
   
           <!-- Confidence Badge (Assistant Only) -->
           <div class="confidence-badge" *ngIf="msg.role === 'assistant' && msg.confidence && !msg.isError" [ngClass]="msg.confidence">
@@ -69,17 +71,23 @@
             </span>
           </div>
   
-          <!-- Source Attribution (Assistant Only) -->
-          <div class="sources-list" *ngIf="msg.sources && msg.sources.length > 0">
-            <strong>Sources:</strong>
-            <ul>
-              <li *ngFor="let source of msg.sources">
-                <a [href]="source.url" target="_blank" rel="noopener noreferrer">
-                  {{ source.title }}
-                </a>
+          <!-- Numbered sources (ids match [n] links in assistant markdown) -->
+          <details
+            class="sources-panel"
+            *ngIf="msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && !msg.isError">
+            <summary class="sources-summary">
+              <span class="sources-summary-label">Sources</span>
+              <span class="sources-count">{{ msg.sources.length }}</span>
+            </summary>
+            <ol class="sources-refs-list">
+              <li
+                *ngFor="let source of msg.sources; let si = index"
+                [attr.id]="'cite-' + msgIndex + '-' + (si + 1)"
+                class="sources-refs-item">
+                <a [href]="source.url" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>
               </li>
-            </ul>
-          </div>
+            </ol>
+          </details>
   
         </div>
       </div>

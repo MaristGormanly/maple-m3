@@ -307,7 +307,12 @@ const handleChat = async (req, res) => {
       : '';
 
     const currentTimestamp = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-    const contextText = chunks.map((c) => `[Source: ${c.source_title} | Last Updated: ${c.last_updated}]\n${c.content}`).join('\n\n');
+    const contextText = chunks
+      .map(
+        (c, i) =>
+          `[${i + 1}] [Source: ${c.source_title} | Last Updated: ${c.last_updated}]\n${c.content}`
+      )
+      .join('\n\n');
     
     const systemPrompt = rawSystemPrompt
       .replace('{{CURRENT_TIMESTAMP}}', currentTimestamp)

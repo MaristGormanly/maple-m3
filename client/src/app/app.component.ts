@@ -20,7 +20,7 @@
  *  - starterChips / showStarterChips / sendSuggestedPrompt() — first-run suggestion chips
  *
  * Template and styles are in app.component.html and app.component.scss respectively.
- * Depends on: CampusApiService, MarkdownPipe, ChatMessage type.
+ * Depends on: CampusApiService, MarkdownPipe, AssistantMarkdownPipe, ChatMessage type.
  */
 import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone, OnInit, Inject } from '@angular/core';
 import { CommonModule, DOCUMENT } from '@angular/common';
@@ -28,11 +28,12 @@ import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
 import { ChatMessage } from './types/chat.types';
 import { MarkdownPipe } from './pipes/markdown.pipe';
+import { AssistantMarkdownPipe } from './pipes/assistant-markdown.pipe';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, MarkdownPipe],
+  imports: [CommonModule, FormsModule, MarkdownPipe, AssistantMarkdownPipe],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })

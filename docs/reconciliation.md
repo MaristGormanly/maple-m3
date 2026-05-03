@@ -167,10 +167,13 @@ This document traces every significant decision from the original design doc thr
 
 **Original & Implemented:** `services/llm.js` — single entry point for all LLM calls. Enforces 30-second timeout, exponential backoff retries (up to 2 retries), token usage tracking, cost estimation, and structured JSON logging per call. 4xx errors skip retries immediately.
 
-### System Prompt — Confirmed (with threshold update)
+### System Prompt — Evolved (threshold + numeric citations)
 
-**Original:** Version-controlled in `prompts/system/`. Injects `[Injected System Timestamp]` for temporal reasoning. References `0.70` threshold in guardrails.  
-**Implemented:** Loaded dynamically per request (live file read, no restart required). Timestamp injected via `{{CURRENT_TIMESTAMP}}` placeholder. Threshold guardrail uses the official final `0.55` value in active prompts and controller logic.
+**Original:** Version-controlled in `prompts/system/`. Injects `[Injected System Timestamp]` for temporal reasoning. References `0.70` threshold in guardrails. The design doc excerpt described narrative citations (e.g., `[Source: Dining Hall Schedule]`) rather than numeric bracket refs.
+
+**Updated & Implemented:** Loaded dynamically per request (live file read, no restart required). Timestamp injected via `{{CURRENT_TIMESTAMP}}`. Threshold guardrail uses the official final `0.55` value. **Citation format:** RETRIEVED CONTEXT blocks are prefixed with `[1]`, `[2]`, … in `server/src/controllers/chat.js` (same order as the response `sources` array). `prompts/system/main-system-prompt.md` instructs the model to cite with bracketed numbers in Markdown that match those labels and the API sources order. The Angular client linkifies `[n]` in assistant replies and shows a collapsible numbered Sources list with matching anchor IDs.
+
+**Rationale:** Numeric citations align the LLM’s answer text, the retrieval context, and the structured `sources` payload so the UI can offer footnote-style scanning without ambiguous title-only references.
 
 ---
 
@@ -244,3 +247,4 @@ This document traces every significant decision from the original design doc thr
 | Dietary restriction detail | ❌ Descoped | Stretch goal | Blocked by Cloudflare; menu link redirect provided |
 | Shuttle/laundry availability | ❌ Descoped | Stretch goal | Requires real-time integrations out of scope |
 | Smoke test suite | ⚠️ Evolved (Addition) | Not planned | `server/tests/smoke.js` added |
+| Answer citations & sources UI | ⚠️ Evolved (Addition) | Narrative `[Source: …]` style in early design excerpt | Numbered `[1]`, `[2]` citations in prompt + context injection; collapsible numbered Sources in Angular with in-answer links |

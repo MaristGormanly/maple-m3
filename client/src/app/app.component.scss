@@ -13,7 +13,7 @@
  *  .message-content         — bubble styling; .error-msg applies a red left border
  *  .text / ::ng-deep        — markdown output resets (p, a, ul spacing/colour)
  *  .confidence-badge        — colour-coded pill: green (high), amber (medium), red (low/none)
- *  .sources-list            — citation block below assistant responses
+ *  .sources-panel           — collapsible numbered sources (anchors for [n] links)
  *  .chat-input-area         — sticky footer with textarea + Send button + feedback link
  *  .loading-indicator       — three-dot bounce animation shown while isLoading is true
  *  .starter-chips           — first-run topic chips (Library, Dining, IT, Events)
@@ -223,6 +223,23 @@
       ::ng-deep a { color: var(--link-md); text-decoration: none; font-weight: 500; }
       ::ng-deep a:hover { text-decoration: underline; }
       ::ng-deep ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+
+      ::ng-deep sup.cite-ref {
+        font-size: 0.7em;
+        font-weight: 700;
+        line-height: 0;
+        vertical-align: super;
+      }
+      ::ng-deep sup.cite-ref a {
+        color: var(--link-md);
+        font-weight: 700;
+        text-decoration: none;
+        border-radius: 2px;
+        padding: 0 0.05em;
+      }
+      ::ng-deep sup.cite-ref a:hover {
+        text-decoration: underline;
+      }
     }
   }
   
@@ -260,27 +277,82 @@
     opacity: 0.9;
   }
   
-  // Source Attribution
-  .sources-list {
+  .sources-panel {
     margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--divider);
+    border: 1px solid var(--divider);
+    border-radius: 8px;
+    background: var(--page-bg);
+    overflow: hidden;
+  }
+
+  .sources-summary {
+    cursor: pointer;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    user-select: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--send-bg);
+      outline-offset: -2px;
+    }
+  }
+
+  .sources-summary-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sources-count {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--bubble-assistant-bg);
+    border: 1px solid var(--divider);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    line-height: 1.2;
+  }
+
+  .sources-panel[open] .sources-summary {
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .sources-refs-list {
+    margin: 0;
+    padding: 0.65rem 0.85rem 0.8rem 1.5rem;
     font-size: 0.85rem;
-  
-    strong { color: var(--text-primary); opacity: 0.85; }
-    
-    ul {
-      list-style-type: none;
-      padding: 0;
-      margin: 0.25rem 0 0 0;
-      
-      li {
-        margin-bottom: 0.25rem;
-        a {
-          color: var(--link-source);
-          text-decoration: none;
-          &:hover { text-decoration: underline; }
-        }
+    line-height: 1.45;
+  }
+
+  .sources-refs-item {
+    scroll-margin-top: 0.85rem;
+    padding-left: 0.35rem;
+    margin-bottom: 0.35rem;
+
+    &::marker {
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    a {
+      color: var(--link-source);
+      text-decoration: none;
+      &:hover {
+        text-decoration: underline;
       }
     }
   }

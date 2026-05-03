@@ -418,7 +418,7 @@ University information must be strictly accurate; the AI cannot invent campus po
 
 **Metric Definition:** Faithfulness measures whether every claim made in the AI's final generated answer can be directly traced back to the retrieved context documents. It tests for hallucinations.
 
-**How we measure it:** We will use an "LLM-as-a-judge" evaluation pipeline. A secondary, highly capable model will be fed the retrieved campus documents and the system's generated answer. It will score the answer on a pass/fail basis: if the AI tells a student the Cannavino Library is open until 2 AM, but the retrieved text says 12 AM, the test fails for lack of faithfulness, regardless of how helpful it sounds.
+**How we measure it:** We will use a deterministic, script-based evaluator in our Golden Dataset runner. The script checks whether the response includes required contract fields, confirms sources are present when expected, and applies rule-based quality checks to flag unsupported or unsafe behavior. If the answer contradicts retrieved context or fails required checks, the case fails for faithfulness.
 
 ### Answer Relevance 
 
@@ -426,7 +426,7 @@ Even if an answer is factually correct and grounded, it must be directly useful 
 
 **Metric Definition:** Answer relevance measures how well the generated response addresses the user's initial prompt, penalizing the system for dodging the question or providing massive, unsummarized data dumps.
 
-**How we measure it:** If a user asks, "Is the health center open right now?", a relevant answer is "Yes, it is open until 5 PM." An irrelevant (though faithful) answer would be pasting the health center's entire staff directory and mission statement. We will measure this by having our evaluator model penalize responses that contain excessive, non-pertinent information drawn from the context window.
+**How we measure it:** If a user asks, "Is the health center open right now?", a relevant answer is "Yes, it is open until 5 PM." An irrelevant (though faithful) answer would be pasting the health center's entire staff directory and mission statement. We measure this using heuristic checks in the Golden Dataset runner (for example, required topical terms and minimum response usefulness checks), and mark the case as failed when relevance criteria are not met.
 
 ### Logging & Observability Compliance
 

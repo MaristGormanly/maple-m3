@@ -1,6 +1,7 @@
 # MAPLE M3 — Design Doc Reconciliation
 
 **Module:** M3: Campus Services & Student Life Navigator  
+**First Version Design Doc:** [v1-design-doc.md](./v1-design-doc.md)  
 **Updated Design Doc:** [MAPLE_M3 Project Design Doc.md](./MAPLE_M3%20Project%20Design%20Doc.md)  
 **Milestone:** Final Project Submission — Spring 2026
 
@@ -209,6 +210,10 @@ This document traces every significant decision from the original design doc thr
 ### Smoke Tests — Evolved (Addition)
 
 **Original:** Golden dataset evaluation (precision/recall, faithfulness, relevance) using an LLM-as-a-judge pipeline.
+
+**Updated & Implemented:** Golden dataset scoring is now primarily heuristic in `eval/scripts/run-golden-eval.js` (contract checks + deterministic relevance/faithfulness rules), with optional LLM judging retained as a non-default path.
+
+**Rationale:** Heuristic scoring is deterministic, reproducible in local/offline workflows, and aligns with our current zero-cost local runtime constraints.
 
 **Added:** `server/tests/smoke.js` — a lightweight endpoint-level test suite covering all routes and error paths (missing auth, invalid inputs, wrong tokens, valid requests). Runnable against any environment via `BASE_URL` and `ADMIN_TOKEN` env vars.
 

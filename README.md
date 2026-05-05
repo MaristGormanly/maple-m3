@@ -144,9 +144,66 @@ Latest local golden-eval summary (`eval/results/golden-eval-20260501-131945.json
 - Distinct error messaging for 422 (RETRIEVAL_FAILED) and 502 (AI_ERROR)
 - `conversation_id` tracked across turns for persistent multi-turn context
 
-## AI Integration Summary
+## AI Integration
 
-We opted for a multi-index RAG architecture utilizing metadata pre-filtering. Based on the user's query, the chat controller classifies the domain (Library, Health, IT, Events, Recreation, Clubs, News, Admin) to isolate the vector search. Dining queries are handled separately via a hardcoded intercept (see [reconciliation.md](./docs/reconciliation.md) for rationale). Retrieval is tuned to a `0.55` cosine similarity threshold (calibrated down from the `0.70` design target to reduce false negatives on administrative queries). If no chunks meet this threshold, the AI is bypassed entirely and a `RETRIEVAL_FAILED` (422) response is returned to prevent hallucination.
+### Model Selection Rationale
+
+**Generative LLM — `llama3.1:8b` via Ollama**
+
+The original design called for a cloud frontier model (Claude or GPT-4o). We migrated to `llama3.1:8b` running on the campus NVIDIA DGX Spark via Ollama for three reasons:
+
+1. **Cost:** Eliminating per-token API fees drops infrastructure cost to $0/month for the pilot.
+2. **Privacy:** All student queries remain on-campus hardware — no query text leaves Marist's network.
+3. **Latency predictability:** Local inference removes network round-trip variability to external API endpoints.
+
+OpenAI `gpt-4o-mini` is retained as a configurable fallback via the `USE_LOCAL_MODEL=false` env toggle; the `server/src/services/llm.js` wrapper exposes an identical interface for both providers with no code changes required to switch. The accepted tradeoff is slightly weaker reasoning compared to frontier models, which is appropriate for the bounded query complexity of a campus services navigator at pilot scale.
+
+**Embedding Model — `nomic-embed-text` via Ollama**
+
+The original design specified OpenAI `text-embedding-3-small` (1536 dimensions). We migrated to `nomic-embed-text` (768 dimensions) for the same cost and privacy reasons as the LLM. OpenAI `text-embedding-3-small` is retained as a fallback. Because the vector dimension differs between providers, the DB must be initialized with the correct dimension at setup time; switching after initialization requires `RESET_DB=true` and a full re-ingestion.
+
+---
+
+### Prompt Design Decisions
+
+The system prompt lives in `prompts/system/main-system-prompt.md` and is loaded dynamically on every request (no server restart required to update it). Key design decisions:
+
+**Temporal grounding via `{{CURRENT_TIMESTAMP}}`**
+The prompt injects the live timestamp at request time so the model can resolve relative queries ("tonight", "this weekend", "tomorrow") against chunk `last_updated` metadata without hallucinating dates. The model is also instructed to warn students when sourced information may be stale.
+
+**Context-only constraint**
+The model is explicitly forbidden from using outside knowledge. All answers must be grounded in the retrieved context blocks. This is the primary hallucination guardrail; it is reinforced by the similarity threshold check that bypasses the LLM entirely if no relevant chunks are found.
+
+**Module boundary guardrails**
+The prompt redirects out-of-scope questions (course registration, degree planning, code evaluation) to the M1, M2, or A-series MAPLE modules rather than attempting to answer them.
+
+**Numbered citation format**
+Retrieved context blocks are labeled `[1]`, `[2]`, … in `server/src/controllers/chat.js` before being injected as `{{CONTEXT}}`. The prompt instructs the model to cite with those exact bracket numbers inline (e.g., `[1]` after a sentence, `[1][2]` when multiple sources apply). The numbers correspond 1:1 with the `sources` array in the API response, allowing the Angular UI to linkify `[n]` references and render a collapsible numbered sources list with matching anchor IDs.
+
+**Conversation history injection**
+When a `conversation_id` is present, the controller prepends the last 5 turns from `ChatHistory` as alternating `user`/`assistant` message objects before the current query. The 5-turn cap was calibrated to stay within the model's practical context budget while covering the typical depth of a student session. History fetch failures degrade gracefully — the request proceeds without history rather than returning an error.
+
+---
+
+### Retrieval Strategy
+
+MAPLE M3 uses a **metadata-filtered RAG** pipeline with the following stages:
+
+1. **Domain classification.** A keyword classifier in the chat controller tags the incoming query with a `source_type` (Library, Health, IT, Events, Recreation, Clubs, News, Admin, Dining). This filter is applied to the `pgvector` similarity search to isolate the embedding space to the relevant domain before any vector comparison is performed.
+
+2. **Embedding & similarity search.** The query is embedded with the same model used at ingestion time (`nomic-embed-text` or `text-embedding-3-small`). PostgreSQL `pgvector` computes cosine distance (`<=>`) against all `DocumentEmbeddings` rows matching the `source_type` filter. The **top-5 chunks** above the similarity threshold are returned.
+
+3. **Similarity threshold — `0.55`.** The design target was `0.70`. Validation runs against administrative queries (Registrar, Financial Aid lookups) showed that formal institutional language embeds farther from colloquial student phrasing than other domains, producing false negatives at `0.70`. Lowering to `0.55` recovered those queries without meaningfully degrading precision elsewhere. The threshold is a named constant (`SIMILARITY_THRESHOLD`) in `server/src/services/retrieval.js`.
+
+4. **LLM bypass on retrieval failure.** If no chunk meets the `0.55` threshold, the LLM is not called at all. The API returns `RETRIEVAL_FAILED` (422) immediately. This prevents the model from fabricating an answer when no grounded context is available.
+
+5. **Confidence scoring.** The top retrieved chunk's similarity score drives the `confidence` field in the API response: ≥ 0.75 → `"high"`, ≥ 0.60 → `"medium"`, below threshold → `"low"`, no retrieval → `"none"`. The Angular UI surfaces this as a badge on each response.
+
+6. **Dining path.** Because `dineoncampus.com` is protected by Cloudflare, dining data is ingested via `data/scripts/dining-manual.js` (with `source_type='Dining'`) and follows the standard retrieval path. If retrieval returns zero Dining chunks, the controller falls back to hardcoded typical semester hours with live links — a graceful degradation rather than a silent failure. See [reconciliation.md](./docs/reconciliation.md) for full rationale.
+
+**Chunking strategy:**
+- Structured records (office directories, hours): one record per chunk to preserve lookup precision.
+- Text-heavy content (IT FAQs, news articles): ~400-word chunks with ~10% overlap so sentence-boundary context is not lost at chunk edges.
 
 ## Architectural Notes & Deviations
 

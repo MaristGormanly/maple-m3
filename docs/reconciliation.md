@@ -248,3 +248,25 @@ This document traces every significant decision from the original design doc thr
 | Shuttle/laundry availability | ❌ Descoped | Stretch goal | Requires real-time integrations out of scope |
 | Smoke test suite | ⚠️ Evolved (Addition) | Not planned | `server/tests/smoke.js` added |
 | Answer citations & sources UI | ⚠️ Evolved (Addition) | Narrative `[Source: …]` style in early design excerpt | Numbered `[1]`, `[2]` citations in prompt + context injection; collapsible numbered Sources in Angular with in-answer links |
+
+---
+
+## Lessons Learned
+
+There are a few changes we would make to our design document knowing what we know now.
+
+### Specify the AI model and infrastructure from the start
+
+The original design doc left the LLM provider as "TBD (Claude or GPT-4o)" with a ~$50/month cloud cost estimate. In reality, we knew there was a high probability of gaining access to the campus NVIDIA DGX Spark running Ollama from day one. If we had known to account for that resource up front, the design doc would have specified `llama3.1:8b` for generation and `nomic-embed-text` for embeddings as the primary path, with OpenAI only as a documented fallback. That would have avoided the mid-project embedding dimension mismatch (1536 → 768) that required a DB reset, and it would have framed the cost model correctly from the beginning ($0 local vs. $50/month cloud).
+
+### Default the evaluation strategy to heuristic, not LLM-as-a-judge
+
+The original design doc described a golden-dataset evaluation pipeline using an LLM judge to score faithfulness and relevance. Once we migrated to a local model on the DGX Spark, using that same model as a judge for its own outputs introduced a circular dependency and produced inconsistent scores. Switching to heuristic evaluation in `eval/scripts/run-golden-eval.js` resolved both problems: scores became reproducible, and the pipeline ran entirely offline with no additional API cost or token budget.
+
+In hindsight, the design doc should have defaulted to heuristic scoring and treated LLM-as-a-judge as an optional, clearly flagged enhancement rather than the primary path. Deterministic evaluation is easier to debug, faster to run in CI, and does not have a dependency on model quality or availability.
+
+### Plan for Cloudflare-protected sources before committing to scraping them
+
+The dining data plan assumed daily Playwright scraping of `dineoncampus.com`. We discovered during implementation that the platform is protected by Cloudflare's bot-detection layer, which reliably blocks automated scraping. The fallback, a hardcoded response with live links and a freshness warning, is serviceable but it means dining information is only as fresh as the last manual ingestion run.
+
+If the design doc had included a step to audit each data source for scraping feasibility before writing the pipeline spec, we would have scoped dining differently from the start: as a redirect-only domain. The same audit would have caught the `dineoncampus.com` Cloudflare wall before we spent time writing a scraper that could not be used in production.

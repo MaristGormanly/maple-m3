@@ -5,6 +5,11 @@
  * is executed as a child process with a 10-minute timeout. Failures are logged
  * and skipped — a single broken script does not halt the rest of the batch.
  *
+ * Before each script runs, stale Documents rows are pruned from the database
+ * according to the CLEANUP map below. DocumentEmbeddings are removed automatically
+ * via ON DELETE CASCADE. news.js is intentionally excluded so historical articles
+ * are preserved for lookback queries.
+ *
  * Usage (manual):
  *   node data/scripts/run-ingestion-batch.js               # runs the default "daily" batch
  *   node data/scripts/run-ingestion-batch.js daily         # same as above
@@ -17,14 +22,16 @@
  *   1st of month at 6:30 AM → node data/scripts/run-ingestion-batch.js monthly
  *
  * Batches:
- *   daily   — dining-manual, campus-events, news, library, intramurals
+ *   daily   — campus-events, news, library, intramurals
  *   weekly  — admin-directory, clubs, health-services, it-helpdesk
- *   monthly — library-services, it-clientTech
+ *   monthly — dining-manual, library-services, it-clientTech
  */
 
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+const { Client } = require('pg');
 
 const SCRIPTS_DIR = path.join(__dirname);
 const LOGS_DIR    = path.join(__dirname, '../../logs/ingestion');
@@ -34,12 +41,11 @@ const TIMEOUT_MS  = 10 * 60 * 1000; // 10 minutes per script
 // Scripts run sequentially to avoid overwhelming the DB pool or the embedding service.
 const BATCHES = {
   daily: [
-    'dining-manual.js',
     'campus-events.js',
     'news.js',
     'library.js',
     'intramurals.js',
-  ],  
+  ],
   weekly: [
     'admin-directory.js',
     'clubs.js',
@@ -48,9 +54,37 @@ const BATCHES = {
     'gym-pool.js',
   ],
   monthly: [
+    'dining-manual.js',
     'library-services.js',
     'it-clientTech.js',
   ],
+};
+
+// Pre-ingestion cleanup rules keyed by script name.
+//
+// Each entry is an object with:
+//   col     — the Documents column to filter on ('source_type' | 'source_title' | 'source_url')
+//   val     — the value to match (exact string, or substring for LIKE-based deletes)
+//   useLike — (optional) if true, matches rows WHERE col LIKE '%val%' instead of col = val
+//   maxAgeDays — (optional) if set, only deletes rows older than this many days
+//               (uses last_updated < NOW() - INTERVAL). Omit to delete all matching rows.
+//
+// Library and IT Support share a source_type between two scripts each, so those
+// entries target source_title / source_url to avoid wiping the sibling script's data.
+//
+// news.js is intentionally absent — historical articles are kept for lookback queries.
+const CLEANUP = {
+  'campus-events.js':    { col: 'source_type',  val: 'Events',                      maxAgeDays: 7 },
+  'library.js':          { col: 'source_title', val: 'Marist Library Hours' },
+  'intramurals.js':      { col: 'source_type',  val: 'Recreation' },
+  'admin-directory.js':  { col: 'source_type',  val: 'Admin' },
+  'clubs.js':            { col: 'source_type',  val: 'Clubs' },
+  'health-services.js':  { col: 'source_type',  val: 'Health' },
+  'it-helpdesk.js':      { col: 'source_url',   val: 'teamdynamix.marist.edu',       useLike: true },
+  'gym-pool.js':         { col: 'source_type',  val: 'RecCenter' },
+  'dining-manual.js':    { col: 'source_type',  val: 'Dining' },
+  'library-services.js': { col: 'source_title', val: 'Marist Library FAQs' },
+  'it-clientTech.js':    { col: 'source_url',   val: 'marist.edu/clienttech',        useLike: true },
 };
 
 // Ensure the ingestion logs directory exists
@@ -67,6 +101,45 @@ function writeLog(message) {
   const line = `[${new Date().toISOString()}] ${message}\n`;
   process.stdout.write(line);
   fs.appendFileSync(getLogPath(), line);
+}
+
+async function runCleanup(scriptName) {
+  const rule = CLEANUP[scriptName];
+  if (!rule) return; // no cleanup defined (e.g. news.js)
+
+  const { col, val, useLike = false, maxAgeDays } = rule;
+
+  const client = new Client({
+    user:     process.env.DB_USER,
+    host:     process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port:     process.env.DB_PORT,
+  });
+
+  try {
+    await client.connect();
+
+    const matchExpr = useLike ? `${col} LIKE $1` : `${col} = $1`;
+    const matchParam = useLike ? `%${val}%` : val;
+
+    let query, label;
+    if (maxAgeDays != null) {
+      query = `DELETE FROM Documents WHERE ${matchExpr} AND last_updated < NOW() - INTERVAL '${maxAgeDays} days'`;
+      label = `${col} = '${val}', older than ${maxAgeDays}d`;
+    } else {
+      query = `DELETE FROM Documents WHERE ${matchExpr}`;
+      label = `${col} = '${val}'`;
+    }
+
+    const res = await client.query(query, [matchParam]);
+    writeLog(`CLEAN  ${scriptName} — deleted ${res.rowCount} rows (${label})`);
+  } catch (err) {
+    // Log but do not abort — the ingestion script will still run
+    writeLog(`CLEAN  ${scriptName} — cleanup failed: ${err.message}`);
+  } finally {
+    await client.end();
+  }
 }
 
 function runScript(scriptName) {
@@ -114,6 +187,7 @@ async function runBatch(batchName) {
 
   const results = [];
   for (const script of scripts) {
+    await runCleanup(script);
     const result = await runScript(script);
     results.push(result);
   }

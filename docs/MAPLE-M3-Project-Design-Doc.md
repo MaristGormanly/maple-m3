@@ -245,17 +245,24 @@ Raw data will be transformed into structured JSON records before vectorization t
 
 **Daily:**
 
-- Dining Hours/Menus  
 - Campus Events
+- News (Marist Circle)
+- Library Hours
+- Intramural Sports
 
-**By Semester:**
+**Weekly (Sundays):**
 
-- Library hours and services  
-- Rec facility hours  
-- Club Directory  
-- Health  
-- Admin directories  
-- IT FAQs
+- Admin Directory
+- Club Directory
+- Health Services
+- IT Help Desk
+- Gym & Pool Hours
+
+**Monthly (1st of month):**
+
+- Dining Hours/Menus
+- Library FAQs
+- IT Client Tech
 
 ## Data Quality
 
@@ -275,7 +282,7 @@ Instead, we will implement Metadata-Based Pre-filtering. User queries will pass 
 
 ### Dynamic Data & Multi-Index Architecture 
 
-Because MAPLE Campus deals with highly heterogeneous data updating at different frequencies (e.g., daily dining menus vs. static administrative FAQs), our integration approach will utilize a Multi-Index RAG architecture. Instead of dumping all campus data into a single vector space, we will partition the vector database by domain. Furthermore, to address the "freshness challenges" inherent to campus life data, our integration relies on scheduled data refresh pipelines (CRON jobs) that automatically re-ingest high-volatility data (like dining menus and event calendars) on a daily basis, ensuring the LLM is never generating answers from stale data.
+Because MAPLE Campus deals with highly heterogeneous data updating at different frequencies (e.g., daily dining menus vs. static administrative FAQs), our integration approach will utilize a Multi-Index RAG architecture. Instead of dumping all campus data into a single vector space, we will partition the vector database by domain. Furthermore, to address the "freshness challenges" inherent to campus life data, our integration relies on scheduled data refresh pipelines (CRON jobs) that automatically re-ingest high-volatility data (like event calendars) on a daily basis, ensuring the LLM is never generating answers from stale data.
 
 ## Model Selection
 
@@ -556,7 +563,7 @@ We will demonstrate this improvement across three key axes:
 **Description:** A student might ask for dining hours or event locations during a holiday or weather emergency, and the system might provide "standard" hours from a stale database chunk.  
 **Likelihood:** Medium  
 **Impact:** Medium  
-**Mitigation:** We will implement CRON jobs for daily re-ingestion of high-volatility data like dining menus and event calendars. Furthermore, the system prompt will inject a "Current System Timestamp" to help the model reason against the `last_updated` metadata of retrieved chunks.  
+**Mitigation:** We will implement CRON jobs for daily re-ingestion of high-volatility data like event calendars. Furthermore, the system prompt will inject a "Current System Timestamp" to help the model reason against the `last_updated` metadata of retrieved chunks.  
 **Contingency:** If the `last_updated` timestamp is significantly older than the current date, the LLM will be instructed to include a warning that the information may not be current.
 
 ## Risk 4 \- High Latency in Conversational Responses

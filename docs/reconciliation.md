@@ -145,9 +145,11 @@ This document traces every significant decision from the original design doc thr
 
 **Original:** Scheduled CRON jobs for daily re-ingestion of dining and events data, described as essential for data freshness.
 
-**Implemented:** Batch automation is defined via `data/scripts/run-ingestion-batch.js` and documented scheduler entries in `data/scripts/cron-schedule.md`. Daily scheduling includes both Dining (`dining-manual.js`) and Events ingestion paths.
+**Implemented:** Batch automation is defined via `data/scripts/run-ingestion-batch.js` and documented scheduler entries in `data/scripts/cron-schedule.md`. Three schedules are active: daily (campus-events, news, library, intramurals), weekly (admin-directory, clubs, health-services, it-helpdesk, gym-pool), and monthly (dining-manual, library-services, it-clientTech).
 
-**Rationale:** High-volatility sources (Dining + Events) are grouped into the daily batch to keep freshness aligned with student-facing usage patterns.
+**Pre-ingestion cleanup:** Before each script runs, the batch orchestrator deletes stale `Documents` rows for that source via a targeted `DELETE FROM Documents WHERE ...` query. `DocumentEmbeddings` rows are removed automatically via `ON DELETE CASCADE`. Cleanup rules are defined in a `CLEANUP` map in `run-ingestion-batch.js` — each entry specifies the column to match (`source_type`, `source_title`, or `source_url`), the value, and an optional age bound. Events rows older than 7 days are pruned rather than fully deleted, preserving a one-week lookback window for historical queries. `news.js` has no cleanup entry so historical articles accumulate intentionally.
+
+**Rationale:** High-volatility sources (Events, library hours, intramurals) are in the daily batch. Directories and services (admin, clubs, health, IT, gym) run weekly. Dining and low-churn reference content (library FAQs, client tech docs) run monthly — dining is hardcoded and changes infrequently, so daily re-ingestion was unnecessary overhead.
 
 ---
 
@@ -237,7 +239,7 @@ This document traces every significant decision from the original design doc thr
 | Embedding model | ⚠️ Evolved | OpenAI `text-embedding-3-small` | `nomic-embed-text` via Ollama; OpenAI as fallback |
 | Infrastructure cost | ⚠️ Evolved | ~$50/month | $0/month (local-only runtime on campus/local infrastructure) |
 | Retrieval threshold | ⚠️ Evolved | 0.70 strict | 0.55 official final threshold |
-| Dining data | ⚠️ Evolved | Daily Playwright scraping | Daily scheduled `dining-manual.js` ingestion + hardcoded fallback when retrieval has no Dining chunks |
+| Dining data | ⚠️ Evolved | Daily Playwright scraping | Monthly scheduled `dining-manual.js` ingestion + hardcoded fallback when retrieval has no Dining chunks |
 | Conversation memory | ⚠️ Evolved | Table described, mechanism unspecified | Last 5 turns injected into LLM message array |
 | `/ingest` auth | ⚠️ Evolved | None specified | Bearer token (`ADMIN_TOKEN`) required |
 | `/ingest` scope | ⚠️ Evolved | General-purpose URL ingestion | Controlled batch trigger (`daily` / `weekly` / `monthly`) with legacy `source_type: "Admin"` fallback |

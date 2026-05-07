@@ -1,0 +1,37 @@
+Goal: Prevent the Documents table from accumulating duplicate and stale rows on each scheduled ingestion cycle by adding pre-ingestion cleanup logic centralized in the batch orchestrator. Analyze all data types by volatility to determine appropriate deletion strategy, move dining to monthly scheduling, and document all changes in the cron schedule reference.
+
+AI Tool Used: Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Data-Type Volatility Analysis: Framed the cleanup decision per source_type by asking whether stale data is harmless, actively wrong, or worth preserving for historical queries — producing different strategies (full delete, age-bounded delete, or intentional skip) per script rather than a blanket wipe.
+- Centralized Orchestrator Pattern: Kept all deletion logic in run-ingestion-batch.js rather than touching individual team-owned scraper scripts, isolating the change to one file and one declarative CLEANUP map.
+- Precision Scoping for Shared source_types: Library and IT Support each have two scripts sharing one source_type, so cleanup targets source_title or source_url LIKE patterns instead of source_type to avoid one script wiping the other's data.
+
+Prompts Used:
+1. "In run-ingestion-batch.js, it would be best to delete older data before ingesting new data during each scheduled turn so the database doesn't get crowded. However, some data may be fine to keep like older news posts and events. Admin directory may overcrowd the data if not deleted each turn. Keep in mind that dining is hardcoded so never changes. List out all the data types we have, like clubs and events, and analyze whether it's better for the older data of that to be deleted during each scheduled ingestion cycle."
+2. "Can you move dining out of daily ingestion and make it monthly instead?"
+3. "Is it possible to add the deletion logic within run-ingestion-batch.js? I do not want to mess with the code in the scraping scripts since that was created by other team members."
+4. "What about past events? Maybe a student wants to know what events happened in the past week. Is it possible to keep events that are less than a week old?"
+5. "Okay, implement this logic in run-ingestion-batch.js"
+6. "Update data/scripts/cron-schedule.md"
+
+Results & Refinements:
+- Batch scheduling:
+  - dining-manual.js moved from daily to monthly — hardcoded static data does not need daily re-ingestion; monthly aligns with actual menu/hours change cadence.
+  - gym-pool.js documented as weekly in cron-schedule.md (was present in BATCHES but missing from the doc comments and cron reference).
+
+- Pre-ingestion cleanup (run-ingestion-batch.js):
+  - Added CLEANUP map: one declarative entry per script specifying col (source_type, source_title, or source_url), val, optional useLike flag, and optional maxAgeDays.
+  - runCleanup() opens its own short-lived pg.Client, executes the targeted DELETE, logs the row count with a CLEAN prefix, then closes — completely isolated from the child process connections used by each scraper.
+  - Cleanup failure is caught and logged but does not abort the ingestion script; the batch continues regardless.
+  - DocumentEmbeddings rows are removed automatically via ON DELETE CASCADE, so no orphaned vectors remain after cleanup.
+
+- Per-type cleanup strategies:
+  - Full delete each run: Library Hours, Recreation, Admin, Clubs, Health, RecCenter, Dining, Library FAQs — data is fully replaced by the fresh scrape.
+  - Age-bounded delete (>7 days): Events — preserves the past week so students can ask "what happened last Tuesday?" while preventing unbounded accumulation.
+  - LIKE-scoped delete by source_url: IT Helpdesk (teamdynamix.marist.edu) and IT Client Tech (marist.edu/clienttech) — both share source_type = 'IT Support', so URL-based scoping prevents cross-wipe.
+  - Title-scoped delete: Library Hours (source_title = 'Marist Library Hours') and Library FAQs (source_title = 'Marist Library FAQs') — both share source_type = 'Library'.
+  - No cleanup: news.js — historical articles are retained for lookback queries.
+
+- Documentation:
+  - cron-schedule.md updated: batch contents table corrected (dining moved to monthly, gym-pool added to weekly row), inline script comments in schtasks and cron examples updated, new Pre-ingestion Cleanup section added with a per-script strategy table, log files note updated to mention the CLEAN prefix.

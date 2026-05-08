@@ -6,7 +6,7 @@ The MAPLE Campus Services & Student Life Navigator is a conversational tool that
 
 This module utilizes a Retrieval-Augmented Generation (RAG) pipeline to dynamically provide the Large Language Model (LLM) with localized, up-to-date Marist College data. Queries are routed to a local NVIDIA DGX Spark running Ollama to ensure data privacy and eliminate cloud API costs.
 
-* **Design doc:** [MAPLE M3 Project Design Doc](./docs/MAPLE_M3%20Project%20Design%20Doc.md)
+* **Design doc:** [MAPLE M3 Project Design Doc](./docs/MAPLE-M3-Project-Design-Doc.md)
 * **Architecture diagram (Mermaid):** [architecture-diagram.md](./docs/architecture-diagram.md)
 * **API specification:** [api-spec.md](./docs/api-spec.md)
 * **Design reconciliation:** [reconciliation.md](./docs/reconciliation.md)
@@ -65,7 +65,15 @@ node server/src/models/db/init.js
 
 ### 4. Populate the Vector Store
 
-Each data domain has its own ingestion script in `data/scripts/`. Run any script from the **repository root** to scrape, chunk, embed, and store documents for that domain:
+First, install the root-level dependencies (used by all ingestion scripts) and download the Playwright browser binaries:
+
+```bash
+# From the repository root
+npm install
+npx playwright install chromium
+```
+
+Each data domain has its own ingestion script in `data/scripts/`. Run all scripts from the **repository root** to scrape, chunk, embed, and store documents for that domain:
 
 ```bash
 node data/scripts/admin-directory.js
@@ -78,11 +86,13 @@ node data/scripts/it-helpdesk.js
 node data/scripts/gym-pool.js
 node data/scripts/intramurals.js
 node data/scripts/library-services.js
+node data/scripts/dining-manual.js
+node data/scripts/it-clientTech.js
 ```
 
 Each script requires the database to be initialized (Step 3) and the embedding service (DGX Spark or OpenAI) to be reachable.
 
-> **Note — Dining data:** Dining hours and menus are **not** ingested via scripts. The `dineoncampus.com` platform is protected by Cloudflare, making automated scraping unreliable. Instead, the chat controller intercepts dining-related queries and returns hardcoded typical semester hours alongside official live links (`dineoncampus.com/marist`). No dining ingestion script is needed.
+> **Note — Dining data:** The `dineoncampus.com` platform is protected by Cloudflare, so live menu scraping is not possible. Instead, `dining-manual.js` ingests hardcoded dining hours and official menu links into the vector store (`source_type='Dining'`), and the chat controller follows the standard retrieval path. If retrieval returns no Dining chunks, the controller falls back to hardcoded semester hours with live links as a graceful degradation.
 
 ### 5. Run the Backend Server
 
@@ -113,9 +123,13 @@ Retrieval and answer quality are measured with a golden-query set (precision/rec
 ```bash
 # Local
 node server/tests/smoke.js
+```
 
-# Production (PowerShell)
-$env:BASE_URL="https://m3.maristchat.com"; $env:ADMIN_TOKEN="your-token"; node server/tests/smoke.js
+To run against a different local port or base URL:
+
+```powershell
+# PowerShell
+$env:BASE_URL="http://localhost:3000"; $env:ADMIN_TOKEN="your-token"; node server/tests/smoke.js
 ```
 
 Latest local golden-eval summary (`eval/results/golden-eval-20260501-131945.json`, dataset `eval/test-cases/golden-dataset.json`):

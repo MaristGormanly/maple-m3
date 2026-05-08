@@ -7,7 +7,6 @@ Prompt Engineering Tactics Used:
 - Context Grounding
 - Explicit constraints
 
-
 Prompts Used:
 Create a script to scrape the information from these sources about client technology information and connecting to the network https://www.marist.edu/clienttech/new-student-information https://www.marist.edu/clienttech/connect-to-the-network. I want to separate the data into the documents table in an organized way. Be sure to crawl and separate each acordian depending on what device in the connecting to the network. Use the Maple M3 design doc requirements. Use the given scripts as examples
 

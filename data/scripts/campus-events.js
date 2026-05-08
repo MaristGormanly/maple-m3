@@ -8,14 +8,12 @@ let openai;
 let embedModel;
 
 if (process.env.USE_LOCAL_MODEL === 'true') {
-  // Point to the DGX Spark via your SSH tunnel
   openai = new OpenAI({
     baseURL: 'http://localhost:11434/v1', 
     apiKey: 'ollama', 
   });
   embedModel = 'nomic-embed-text'; 
 } else {
-  // Fallback to real OpenAI if needed later 
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
@@ -30,7 +28,6 @@ const client = new Client({
   port: process.env.DB_PORT,
 });
 
-// Using the Daily Events URL which contains the most up-to-date schedule
 const SOURCE_URL = 'https://www.marist.edu/daily-events';
 const SOURCE_TITLE = 'Marist Campus Events';
 const SOURCE_TYPE = 'Events';
@@ -44,33 +41,64 @@ async function scrapeAndIngestEvents() {
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     
-    // Increased timeout to ensure full rendering of the events list
     await page.goto(SOURCE_URL, { waitUntil: 'networkidle', timeout: 60000 });
 
-    // Extraction logic targeting the current Marist daily-events structure
     const events = await page.evaluate(() => {
-      // Look for the main container that holds the daily schedule text
       const content = document.querySelector('.region-content, #main-content') || document.body;
-      const text = content.innerText;
+      const lines = content.innerText.split('\n').map(l => l.trim()).filter(l => l !== '');
       
-      // Split by date patterns (e.g., "Thursday, April 2nd") to isolate individual events
-      const eventBlocks = text.split(/(?=\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s[A-Z][a-z]+\s\d+(?:st|nd|rd|th)?)/);
+      const extractedEvents = [];
+      let currentBlock = [];
       
-      return eventBlocks.slice(1).map(block => {
-        const lines = block.split('\n').filter(l => l.trim() !== '');
-        return {
-          title: lines[2] || lines[1], // Often the 3rd line after date and time
-          timeStr: lines[0],
-          location: lines[1],
-          description: block.substring(0, 500).trim(), // Taking a snippet for context
-          url: window.location.href
-        };
-      }).filter(e => e.title && e.title.length > 3);
+      const dateRegex = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+[A-Za-z]+\s+\d+(st|nd|rd|th)?\s*@.*$/i;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        if (dateRegex.test(line)) {
+          const timeStr = line;
+          const location = (i + 1 < lines.length) ? lines[i + 1] : 'Unknown';
+          
+          const cleanBlock = currentBlock.filter(l => 
+            !l.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+$/i) &&
+            !l.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i) &&
+            !['Upcoming Events', 'Single Day Events', 'Events Title', 'MARIST University EVENTS', 'Events Calendar'].includes(l)
+          );
+
+          let title = cleanBlock.length > 0 ? cleanBlock[0] : 'Unknown Title';
+          
+          if (cleanBlock.length > 1 && cleanBlock[1] === title) {
+            cleanBlock.splice(1, 1);
+          }
+          
+          const description = cleanBlock.slice(1).join('\n').substring(0, 500).trim();
+          
+          extractedEvents.push({
+            title,
+            timeStr,
+            location,
+            description,
+            url: window.location.href
+          });
+          
+          currentBlock = [];
+          i++; 
+        } else {
+          currentBlock.push(line);
+        }
+      }
+      
+      return extractedEvents.filter(e => e.title && e.title !== 'Unknown Title');
     });
+
+    // - Remove the first event from the array bc not real event ---
+    if (events.length > 0) {
+      console.log(`Dropping the first sticky event: "${events[0].title}"`);
+      events.shift(); 
+    }
 
     if (events.length === 0) {
       console.log('No event data could be extracted. Attempting fallback text extraction...');
-      // If structured extraction fails, ingest the whole page as a fallback chunk
       const pageText = await page.evaluate(() => document.body.innerText);
       events.push({
         title: "Daily Events Overview",
@@ -108,7 +136,7 @@ async function scrapeAndIngestEvents() {
         `;
         await client.query(vectorInsertQuery, [docId, `[${embeddingVector.join(',')}]`]);
 
-        console.log(`Inserted chunk ${i + 1}/${events.length} into vector database.`);
+        console.log(`Inserted chunk ${i + 1}/${events.length} into vector database. (${event.title})`);
       } catch (err) {
         console.error(`Failed to ingest event: ${event.title}`, err.message);
       }

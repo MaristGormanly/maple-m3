@@ -1,0 +1,5 @@
+Attached: Spec Doc, clubs.js, gym-pool.js, and library.js
+
+I want to scrape this page for the hours of the dining locations on campus: 
+https://dineoncampus.com/marist/hours-of-operation. 
+Use the provided js files as a guide for the format and logging patterns.

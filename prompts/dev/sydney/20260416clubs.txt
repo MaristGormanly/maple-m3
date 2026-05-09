@@ -1,0 +1,12 @@
+
+Goal: Debug the existing clubs script.
+
+Tool used: Gemini
+
+Context: 
+Has the architecture doc, along with admin-directory as a good example.
+
+Prompt:
+"The clubs scraper is skipping over a section of clubs. Here is the link again https://www.marist.edu/student-life/involvement"
+
+Result: After more trial and error was able to fix the output of the clubs script. Had to switch the logic to complete 2 passes through to get all clubs.

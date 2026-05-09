@@ -1,0 +1,177 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+const { Client } = require('pg');
+const { chromium } = require('playwright');
+const { OpenAI } = require('openai');
+
+let openai;
+let embedModel;
+
+if (process.env.USE_LOCAL_MODEL === 'true') {
+  openai = new OpenAI({
+    baseURL: 'http://localhost:11434/v1',
+    apiKey: 'ollama',
+  });
+  embedModel = 'nomic-embed-text';
+} else {
+  openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+  embedModel = 'text-embedding-3-small';
+}
+
+const client = new Client({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
+const SECTIONS = [
+  {
+    url: 'https://www.maristcircle.com/home',
+    sourceTitle: 'Marist Circle — Campus News',
+    sectionLabel: 'Campus News',
+  },
+  {
+    url: 'https://www.maristcircle.com/features',
+    sourceTitle: 'Marist Circle — Features',
+    sectionLabel: 'Features',
+  },
+  {
+    url: 'https://www.maristcircle.com/opinion',
+    sourceTitle: 'Marist Circle — Opinion',
+    sectionLabel: 'Opinion',
+  },
+  {
+    url: 'https://www.maristcircle.com/arts-entertainment',
+    sourceTitle: 'Marist Circle — Arts & Culture',
+    sectionLabel: 'Arts & Culture',
+  },
+];
+
+const SOURCE_TYPE = 'News';
+
+const GOTO_TIMEOUT_MS = 60_000;
+
+async function extractBlogListArticles(page) {
+  await page.waitForSelector('article.BlogList-item', { timeout: 15000 });
+  return page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('article.BlogList-item'));
+    return items
+      .map(item => {
+        const titleEl = item.querySelector('a.BlogList-item-title');
+        const authorEl = item.querySelector('a.Blog-meta-item--author');
+        const dateEl = item.querySelector('time.Blog-meta-item--date');
+        const iso = dateEl?.getAttribute('datetime')?.trim() || null;
+        const dateText = dateEl?.innerText.trim() || null;
+        return {
+          article_title: titleEl ? titleEl.innerText.trim() : null,
+          author: authorEl ? authorEl.innerText.trim() : null,
+          date: iso || dateText,
+          article_url: titleEl ? titleEl.href : null,
+        };
+      })
+      .filter(a => a.article_title);
+  });
+}
+
+async function scrapeAndIngestNews() {
+  let browser;
+  let page;
+  try {
+    await client.connect();
+    console.log('Connected to database. Starting Marist Circle multi-section scrape with Playwright...');
+
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    page = await context.newPage();
+
+    const allArticles = [];
+
+    for (const section of SECTIONS) {
+      try {
+        await page.goto(section.url, { waitUntil: 'networkidle', timeout: GOTO_TIMEOUT_MS });
+        const items = await extractBlogListArticles(page);
+        if (items.length === 0) {
+          console.warn(`Section returned 0 articles: ${section.sectionLabel} (${section.url})`);
+        } else {
+          console.log(`Section "${section.sectionLabel}": ${items.length} articles`);
+        }
+        for (const item of items) {
+          allArticles.push({
+            ...item,
+            listUrl: section.url,
+            sourceTitle: section.sourceTitle,
+            sectionLabel: section.sectionLabel,
+          });
+        }
+      } catch (sectionErr) {
+        console.warn(
+          `Could not scrape section ${section.sectionLabel} (${section.url}): ${sectionErr.message}`
+        );
+      }
+    }
+
+    if (allArticles.length === 0) {
+      console.log('No articles could be extracted from any section.');
+      return;
+    }
+
+    console.log(`Total ${allArticles.length} articles across all sections. Generating embeddings...`);
+
+    for (let i = 0; i < allArticles.length; i++) {
+      const article = allArticles[i];
+      const chunkContent = [
+        `section: ${article.sectionLabel}`,
+        `article_title: ${article.article_title}`,
+        `author: ${article.author ?? 'N/A'}`,
+        `date: ${article.date ?? 'N/A'}`,
+        `url: ${article.article_url ?? article.listUrl}`,
+      ].join('\n');
+
+      try {
+        const embeddingResponse = await openai.embeddings.create({
+          model: embedModel,
+          input: chunkContent,
+        });
+        const embeddingVector = embeddingResponse.data[0].embedding;
+
+        const docInsertQuery = `
+          INSERT INTO Documents (source_title, source_url, source_type, chunk_index, content)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING doc_id;
+        `;
+        const docResult = await client.query(docInsertQuery, [
+          article.sourceTitle,
+          article.article_url || article.listUrl,
+          SOURCE_TYPE,
+          i,
+          chunkContent,
+        ]);
+        const docId = docResult.rows[0].doc_id;
+
+        const vectorInsertQuery = `
+          INSERT INTO DocumentEmbeddings (doc_id, embedding)
+          VALUES ($1, $2);
+        `;
+        await client.query(vectorInsertQuery, [docId, `[${embeddingVector.join(',')}]`]);
+
+        console.log(`Inserted chunk ${i + 1}/${allArticles.length} into vector database.`);
+      } catch (innerError) {
+        console.error(`Failed to ingest article: ${article.article_title}`, innerError.message);
+      }
+    }
+
+    console.log('Marist Circle news ingestion complete!');
+  } catch (error) {
+    console.error('Error during scraping/ingestion:', error);
+  } finally {
+    if (page) await page.close().catch(() => {});
+    if (browser) await browser.close();
+    await client.end();
+  }
+}
+
+scrapeAndIngestNews();

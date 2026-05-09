@@ -1,0 +1,19 @@
+Goal: Execute the final polish on the backend architecture to achieve 100% compliance with the MAPLE Architecture Guide, M3 Project Design Doc, and the Lab 2 grading rubric. Focus areas included standardizing REST API error envelopes, scaling the database connection, and satisfying all documentation requirements.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Rubric & Guideline Validation: Fed the AI a highly structured, line-by-line feedback report contrasting my codebase directly against the "MAPLE Architecture Guide" and "Lab 2 Guidelines". This constrained the AI to focus strictly on compliance gaps rather than inventing new features.
+- Iterative Refinement: Passed my updated implementations of `chat.js`, `init.js`, and `README.md` back to the AI for a final "red team" review to ensure no edge cases (like schema migration constraints or missing metadata fields) slipped through.
+
+Prompts Used:
+1. "Here is more feedback on the changes you made. Make more changes to the code to fix any and all gaps as mentioned in the feedback..." (Provided the detailed table mapping the Architecture Guide to exact file gaps, such as the missing error.details in the 422 response and the /status stub).
+2. "I made some changes to the backend files to align more with the design doc and lab 2 guidelines: [Pasted chat.js, init.js, llm.js, retrieval.js, package.json, README.md]. What changes should be made to ensure there are absolutely no gaps in implementation and guidelines?"
+
+Results & Refinements:
+- MAPLE Error Envelopes: Refactored `chat.js` to strictly enforce the MAPLE standard error envelope, including injecting dynamic model names, request timestamps, and detailed retrieval metadata into the `422 RETRIEVAL_FAILED`, `502 AI_ERROR`, and `500 INTERNAL_ERROR` responses.
+- Database Connection Scaling: Upgraded `retrieval.js` and `init.js` from a single `pg.Client` to a `pg.Pool` to ensure the architecture is production-ready and capable of handling concurrent pilot traffic.
+- Edge Case Handling (Schema Migration): Solved a critical deployment caveat with pgvector by introducing a `RESET_DB` environment variable in `init.js`. This allows the schema to dynamically drop and rebuild the `DocumentEmbeddings` table when switching between 768-dimension local models and 1536-dimension cloud models.
+- Code Hardening: Added a helper function `resolveLlmModelName()` to track model fallbacks, and implemented defensive `return` statements outside the retry loop in `llm.js` to guarantee the API never hangs.
+- Documentation Compliance: Expanded the `README.md` to perfectly match Section 7 of the Architecture Guide, adding explicit deployment instructions, tech stack disclosures, AI integration summaries, and documented Lab 2 scope deviations.
+- Commits Pushed: `Refactor to use pg.Pool and strict MAPLE envelopes`, `Update README for Lab 2 compliance`, `Implement RESET_DB schema toggle`.

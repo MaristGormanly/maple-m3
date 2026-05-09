@@ -1,0 +1,15 @@
+Goal: Develop a scraper for  Marist Library hours in semantically structured chunks for RAG-based AI assistant.
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Context Injection 
+- Error-Driven Refinement
+- Iterative Prompting
+
+Prompts Used:
+- "I want to create a script to scrape the embedded google calendar on this library webpage... use the design doc requirements and specifications."
+- "Revise so that it is formatted nicely in the database chunk. Use labels like Location, Date Context, Operating Hours"
+- (Follow-up with error logs) "Scrape Failed: locator.waitFor: Timeout 30000ms exceeded."
+
+Outcome: Sucessfully navigates an embedded Google Calendar iframe, extracts daily schedules, ingests them into PostgreSQL database 

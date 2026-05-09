@@ -1,0 +1,16 @@
+Goal: Extracts student IT support network connection guides from the Marist client technologies websites. 
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Few Shot
+- Context Grounding
+- Explicit constraints
+
+Prompts Used:
+Create a script to scrape the information from these sources about client technology information and connecting to the network https://www.marist.edu/clienttech/new-student-information https://www.marist.edu/clienttech/connect-to-the-network. I want to separate the data into the documents table in an organized way. Be sure to crawl and separate each acordian depending on what device in the connecting to the network. Use the Maple M3 design doc requirements. Use the given scripts as examples
+
+Results & Refinements:
+The AI successfully generated a complete, functional script (client-tech.js). 
+It correctly implemented Playwright to target the .collapse-card and accordion elements, extracted the device-specific network instructions, and integrated the dual-environment (Local Ollama vs. Cloud OpenAI) embedding logic required by the M3 architecture. 
+It also mapped the data correctly to the PostgreSQL Documents and DocumentEmbeddings tables.

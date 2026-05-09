@@ -1,0 +1,141 @@
+/**
+ * server/src/routes/campus.js — Campus API Route Definitions
+ *
+ * Defines and exports all Express routes under the /api/v1/campus prefix.
+ * Route handlers are kept thin — business logic lives in the controller and services.
+ *
+ * Registered endpoints:
+ *  POST /chat    → chat controller (RAG pipeline, rate-limited)
+ *  GET  /status  → inline handler; queries Documents for source_type='Events' and
+ *                  returns up to 10 formatted event records (supports ?date= filtering)
+ *  POST /ingest  → inline handler; triggers run-ingestion-batch.js asynchronously
+ *                  and returns a 202 with a job ID + selected batch.
+ */
+const express = require('express');
+const router = express.Router();
+const { execFile } = require('child_process');
+const path = require('path');
+const { handleChat } = require('../controllers/chat');
+const { apiLimiter, requireAdminToken } = require('../middleware/security');
+const retrievalService = require('../services/retrieval');
+const VALID_BATCHES = new Set(['daily', 'weekly', 'monthly']);
+
+// Helper to extract structured event data from the raw scraped text chunks
+function mapEventDocumentRow(row) {
+  const content = row.content || '';
+  const titleMatch = content.match(/^Event:\s*(.+)$/m);
+  const locationMatch = content.match(/^Location:\s*(.+)$/m);
+  return {
+    title: titleMatch ? titleMatch[1].trim() : row.source_title,
+    location: locationMatch ? locationMatch[1].trim() : 'Campus', // Fallback
+    start_time: row.last_updated,
+    category: 'Events',
+  };
+}
+
+router.post('/chat', apiLimiter, handleChat);
+
+// Fetch event chunks from Documents (source_type = 'Events')
+router.get('/status', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  try {
+    const { date } = req.query; // filters by ingest date (last_updated), e.g. ?date=2026-04-15
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'date parameter must be in YYYY-MM-DD format.' },
+        metadata: { timestamp, module: 'm3', version: '1.0.0' }
+      });
+    }
+
+    const pool = retrievalService.getDbPool();
+    
+    let queryText = '';
+    let queryParams = [];
+
+    if (date) {
+      queryText = `
+        SELECT doc_id, source_title, source_url, source_type, last_updated, content
+        FROM Documents
+        WHERE source_type = 'Events' AND DATE(last_updated) = $1::date
+        ORDER BY last_updated DESC
+        LIMIT 10;
+      `;
+      queryParams.push(date);
+    } else {
+      queryText = `
+        SELECT doc_id, source_title, source_url, source_type, last_updated, content
+        FROM Documents
+        WHERE source_type = 'Events'
+        ORDER BY last_updated DESC
+        LIMIT 10;
+      `;
+    }
+
+    const result = await pool.query(queryText, queryParams);
+
+    const formattedEvents = result.rows.map(mapEventDocumentRow);
+
+    res.status(200).json({
+      success: true,
+      data: formattedEvents,
+      error: null,
+      metadata: { timestamp, module: "m3", version: "1.0.0" }
+    });
+  } catch (err) {
+    console.error('[/status] Database query failed:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      data: null, 
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve events.' },
+      metadata: { timestamp, module: "m3", version: "1.0.0" }
+    });
+  }
+});
+
+// Trigger actual data ingestion pipeline script (Admin token required)
+router.post('/ingest', requireAdminToken, (req, res) => {
+  const timestamp = new Date().toISOString();
+  const { batch, source_type } = req.body || {};
+
+  // Backward compatibility: source_type=Admin maps to weekly batch.
+  const requestedBatch = batch || (source_type === 'Admin' ? 'weekly' : null);
+
+  if (!requestedBatch || !VALID_BATCHES.has(requestedBatch)) {
+    return res.status(400).json({ 
+      success: false, 
+      data: null, 
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: "Provide a valid ingestion batch: 'daily', 'weekly', or 'monthly'. Legacy fallback: source_type='Admin' runs the weekly batch."
+      },
+      metadata: { timestamp, module: "m3", version: "1.0.0" }
+    });
+  }
+
+  const jobId = `job_${Date.now()}`;
+  const runnerPath = path.join(__dirname, '../../../data/scripts/run-ingestion-batch.js');
+  
+  // Trigger the script asynchronously (pseudo job-tracking)
+  console.log(`[Ingest Job Started] ID: ${jobId} | batch: ${requestedBatch}`);
+  execFile('node', [runnerPath, requestedBatch], (error, stdout, stderr) => {
+    if (error) console.error(`[Ingest Job Failed] ID: ${jobId} | Error: ${error.message}`);
+    if (stderr) console.error(`[Ingest Job Stderr] ID: ${jobId} | ${stderr}`);
+    console.log(`[Ingest Job Completed] ID: ${jobId}\n${stdout}`);
+  });
+
+  res.status(202).json({
+    success: true,
+    data: {
+      message: "Ingestion pipeline triggered successfully in the background.",
+      jobId: jobId,
+      batch: requestedBatch
+    },
+    error: null,
+    metadata: { timestamp, module: "m3", version: "1.0.0" }
+  });
+});
+
+module.exports = router;

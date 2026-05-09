@@ -1,0 +1,26 @@
+Goal: Close out Lab 2 documentation and developer-experience gaps: align the public API spec with the live backend, merge the latest frontend UI work, polish the chat UI copy and feedback channel, and land a consolidated backend/frontend pass (comments, README vector-store steps, retrieval tuning, pool-based DB access, security middleware, LLM wrapper, and logging) so the repo matches what we demo and what the rubric expects.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Commit-Anchored Summaries: Used each Git commit as a checkpoint to force AI to list only user-visible and grader-visible deltas (docs vs runtime) and avoid inventing features not in the diff.
+- Cross-File Contract Check: Asked AI to reconcile `docs/api-spec.md` with `server/src/routes/campus.js` and `server/src/controllers/chat.js` so envelopes, status codes, and MVP ingest scope stay consistent.
+- Onboarding Path Walkthrough: Stepped through README setup as a new developer would—DB init → ingestion scripts → backend → frontend—to catch missing “how to seed vectors” instructions.
+
+Prompts Used:
+1. "Update api-spec.md for every implemented endpoint; use MAPLE envelope and standard error codes."
+2. "README needs vector ingestion steps and team/AI disclosure alignment; what’s missing vs Architecture Guide §7?"
+3. "Add file-level header comments across server/ and client/src explaining purpose and expected behavior."
+4. "Confirm retrieval uses pg.Pool, threshold 0.55, and 422 RETRIEVAL_FAILED bypasses the LLM."
+5. "Merge remote feature/frontend-ui; resolve conflicts if any and verify chat still hits local API."
+
+Results & Refinements:
+- **Update api-spec.md** — Documented `GET /health`, `POST /api/v1/campus/chat`, `GET /api/v1/campus/status` (events from `Documents` with `source_type = 'Events'`), and `POST /api/v1/campus/ingest` (Lab 2 MVP: `Admin` only, 202 async job), including rate limiting, error codes, and example envelopes.
+- **Merge `feature/frontend-ui`** — Integrated remote `feature/frontend-ui` from `MaristGormanly/maple-m3` into the working branch so UI and API client stay in sync with team progress.
+- **Update input placeholder and feedback link** — Broadened the chat textarea placeholder (events, library hours, IT help, etc.) and pointed the footer feedback link at the correct Google Form URL for pilot feedback.
+- **Add docs/comments, vector ingest & tune retrieval** — Large integration commit (author: sufia1117):
+  - Added file-header documentation across Angular (bootstrap, config, component, service, pipe, types, environments, index shell, styles, spec) and Express (entry, routes, chat controller, retrieval, LLM, security, logger, DB init).
+  - Expanded `README.md` with explicit `data/scripts/` vector-ingestion commands, team table placeholder, and AI tools list (including Cursor).
+  - Retrieval: cosine threshold **0.55**; **pg.Pool** for concurrent-safe PostgreSQL access.
+  - Backend: `/status` reads events from `Documents`; `/ingest` documented and scoped; **CORS** + **per-IP rate limiting** on chat; **LLM service** with provider selection (local Ollama vs OpenAI), timeout, retries, and structured **JSON logging**; **db init** notes for `pgvector` dimensions and `RESET_DB` when toggling embedding width.
+  - Minor **test scaffolding** retained for AppComponent smoke tests.

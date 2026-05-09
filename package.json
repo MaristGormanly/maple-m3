@@ -1,0 +1,32 @@
+{
+  "name": "maple-m3",
+  "version": "1.0.0",
+  "description": "The MAPLE Campus Services &amp; Student Life Navigator is a conversational tool serving as an AI-powered gateway to campus engagement and daily life.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Run module-specific tests (see server/package.json)\"",
+    "eval:golden": "node eval/scripts/run-golden-eval.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaristGormanly/maple-m3.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MaristGormanly/maple-m3/issues"
+  },
+  "homepage": "https://github.com/MaristGormanly/maple-m3#readme",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "openai": "^6.33.0",
+    "pg": "^8.20.0",
+    "playwright": "^1.59.0"
+  }
+}

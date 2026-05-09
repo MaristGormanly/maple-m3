@@ -1,0 +1,40 @@
+Goal: Finalize key MVP hardening tasks by improving conversational continuity, locking ingestion/admin security, tightening API contract behavior on `/status`, adding smoke-test coverage for core endpoints, expanding structured retrieval observability, and implementing a robust dining fallback path when live menu scraping is unreliable.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Contract and Guardrail Verification: Repeatedly asked AI to validate behavior against MAPLE envelope/error semantics (especially 422 retrieval failures and `/status` validation) before documenting outcomes.
+- Failure-Mode First Framing: Prioritized prompts around likely production failure points (unauthorized ingest, low-retrieval confidence, endpoint regressions, Cloudflare-blocked dining scrape) to ensure mitigations were implemented and captured.
+
+Prompts Used:
+1. "Implement persisted conversation memory by prepending the last 5 chat turns to LLM requests."
+2. "Add admin-token auth for the ingest endpoint and keep secrets env-only."
+3. "Validate `/status` date query and tighten error responses to avoid leaking internals."
+4. "Add smoke tests for `/health`, `/api/v1/campus/chat`, `/api/v1/campus/status`, and `/api/v1/campus/ingest`."
+5. "Expand retrieval logs with latency/model/status for structured observability."
+6. "Add a dining intercept utility with hardcoded hours/menu links and update docs/README accordingly."
+
+Results & Refinements:
+- Conversation Memory:
+  - Chat flow now loads prior turns from persisted history and injects them into the LLM message context.
+  - Follow-up questions retain short-term context, reducing repetitive clarification prompts.
+
+- Ingest Security:
+  - Added bearer-token protection for `/api/v1/campus/ingest`.
+  - Auth token moved to environment configuration (`ADMIN_TOKEN`) with `.env.example` alignment.
+  - Closed the previously open ingest trigger path.
+
+- API Contract Tightening:
+  - Added request validation for `/status?date=` format.
+  - Standardized error envelopes/codes and reduced internal error-detail leakage in route responses.
+  - Improved contract consistency across campus endpoints.
+
+- Smoke Coverage:
+  - Added executable smoke checks for health, chat, status, and ingest endpoints.
+  - Updated scripts to support quick sanity verification before demos/merges.
+  - Reduced risk of silent endpoint regressions.
+
+- Structured Observability:
+  - Retrieval logs now include richer structured fields for latency and call outcome.
+  - Improved debuggability for retrieval failures, threshold misses, and performance analysis.
+

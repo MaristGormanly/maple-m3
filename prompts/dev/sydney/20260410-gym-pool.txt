@@ -1,0 +1,12 @@
+
+Goal: Debug the existing gym-pool script.
+
+Tool used: Gemini
+
+Context: 
+Has the architecture doc, along with admin-directory and a good example.
+
+Prompt:
+"The gym pool scraper is scraping html code instead of just text. Here is the link again https://goredfoxes.com/sports/2011/10/3/205308200.aspx"
+
+Result: After more trial and error was able to fix the output of the gym-pool script.

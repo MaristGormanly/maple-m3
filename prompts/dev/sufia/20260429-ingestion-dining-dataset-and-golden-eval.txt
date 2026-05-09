@@ -1,0 +1,32 @@
+Goal: Wire `/ingest` to the batch orchestrator so operators can run daily/weekly/monthly ingestion (not a single hardcoded script), align dining with DB-first retrieval plus documented hardcoded fallback, include dining in automated daily batches for consistency, and stand up a golden-dataset evaluation harness that scales from an initial 12-case baseline to 50 realistic cases across core, temporal, routing, and adversarial categories.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Operational-API First: Framed `/ingest` changes around selectable batches and backward-compatible parameters so smoke tests and deployment docs stay aligned with real behavior.
+- Docs-as-Contract: Updated API spec and reconciliation notes in lockstep with backend dining and ingestion behavior to remove code/docs drift.
+- Eval-as-Regression Harness: Treated golden cases as executable acceptance criteria (status envelopes, source expectations, adversarial refusal paths) and expanded coverage incrementally (12 → 50) without over-tuning to brittle strings.
+
+Prompts Used:
+1. "Fix this: The `/ingest` API endpoint in `campus.js` only fires `admin-directory.js` directly — wire it to `run-ingestion-batch.js` so other batches can be triggered via API."
+2. "Check if the backend correctly uses the hardcoded `it-clientTech.js` and `dining-manual.js` whenever a user asks about Wi‑Fi or dining."
+3. "Fix dining: `chat.js` has no dining keyword branch / utility; docs claim a hardcoded intercept; `run-ingestion-batch.js` references missing `server/src/utils/dining.js`."
+4. "Fix reconciliation and batch docs: scheduler was marked descoped/manual; daily batch should include `dining-manual.js`; remove comments saying dining is excluded from automation."
+5. "Create a base golden dataset for evaluation with only 12 test cases"
+6. "Update Golden Dataset to include 50 test cases, including edge cases and realistic student situations"
+
+Results & Refinements:
+- Ingestion automation and API:
+  - `/ingest` routes through `run-ingestion-batch.js` with validated `batch` arguments (`daily`, `weekly`, `monthly`) instead of firing only `admin-directory.js`.
+  - Legacy `source_type: "Admin"` maps to the weekly batch for backward compatibility.
+  - Safer process invocation (`execFile`) and smoke-test updates for batch selection and invalid-batch handling.
+
+- Dining pipeline consistency:
+  - Daily batch includes `dining-manual.js` alongside other high-churn sources; cron/schedule documentation updated to match.
+  - Chat path uses DB-first retrieval with `domainFilter = 'Dining'` and falls back to centralized hardcoded dining utility only when retrieval returns no chunks.
+  - Added `server/src/utils/dining.js` and reconciled stale references (e.g., batch runner comments, API spec, reconciliation doc).
+
+- Golden evaluation:
+  - Introduced `eval/` layout with `golden-dataset.json` and `run-golden-eval.js`, root `eval:golden` script, and server `test:golden` pointing at the harness.
+  - Initial 12-case dataset expanded to 50 realistic cases; evaluator supports heuristic judging, policy-guard / refusal paths, and stricter log-schema checks where appropriate.
+  - Deterministic eval behavior via `x-maple-eval` header (e.g., temperature control) to stabilize pass/fail signals across runs.

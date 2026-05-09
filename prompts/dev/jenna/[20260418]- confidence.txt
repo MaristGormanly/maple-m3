@@ -1,0 +1,16 @@
+Goal: Understand where "confidence" is set and what the domain keyword block in chat.js does for retrieval.
+
+AI Tool Used: Cursor
+
+Prompt Engineering Tactics Used:
+- Iterative Refinement
+
+Prompts Used:
+- Where can I adjust the confidence level of the responses?
+- @server/src/controllers/chat.js do I need to make reference to the other topics to increase confidence level?
+- @server/src/controllers/chat.js @docs/MAPLE_M3 Project Design Doc.md In terms of Metadata pre-filtering, the design doc calls out explicit admin/registrar/directory routing. 
+chat.js only sets domainFilter for dining, library, IT, events, gym/pool. Add releveant Admin / Clubs / News / Health keywords.
+
+Results & Refinements:
+- The first prompt was in Ask mode to get an understanding of the existing back end code. I iteratively asked questions about what parts of the code were doing. 
+- The key words that the AI generated were either way too specific or redundant, so I went back in an customized them. 

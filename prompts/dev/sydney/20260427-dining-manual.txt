@@ -1,0 +1,13 @@
+
+Goal: Create a "script" for the dining information that needs to be hardcoded in instead of scraped
+since cloudflare is blocking our scraping attemps. 
+
+Tool used: Gemini
+
+Context: 
+Has the architecture doc, along with admin-directory as a good example of the paths and database logic.
+
+Prompt:
+"Give me a template for a hardcoded dining information script that follows the same structre as the other scrips but takes the hardcoded information instead of scraping."
+
+Result: Gave me a working template that I then filled in with all the dining locations and info.

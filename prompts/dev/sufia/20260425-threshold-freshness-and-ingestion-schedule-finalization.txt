@@ -1,0 +1,42 @@
+Goal: Finalize ingestion scheduling cadence, implement deterministic data-freshness safeguards end-to-end, and standardize the project’s official retrieval/confidence threshold semantics across backend logic and documentation.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Implementation-to-Documentation Lockstep: Sequenced prompts so code changes landed first (freshness utility, response schema, confidence banding), then docs were updated to mirror exact live behavior.
+- Contract-First Change Framing: Repeatedly framed updates around API contract consistency (`/chat` response fields, confidence bands, threshold language) to prevent drift across frontend types, backend responses, and specs.
+- Volatility-Aware Scheduling Prompts: Used source update-frequency reasoning (daily/weekly/monthly) to refine ingestion batch composition and cron guidance rather than treating all data domains uniformly.
+
+Prompts Used:
+1. "Add `it-clientTech.js` to ingestion batches and switch scheduling to daily/weekly/monthly."
+2. "Update `data/scripts/cron-schedule.md` and include macOS instructions."
+3. "Implement deterministic stale-data checks using `last_updated` and return user-facing freshness warnings."
+4. "Wire freshness metadata through backend `/chat` responses and frontend UI rendering."
+5. "Keep official retrieval threshold at 0.55 and update confidence tiering so low is below 0.60."
+6. "Reconcile API/design/reconciliation docs to reflect final threshold decisions and current behavior."
+
+Results & Refinements:
+- Ingestion Schedule Finalization:
+  - Updated batch orchestration to daily/weekly/monthly cadence.
+  - Added `it-clientTech.js` into automated ingestion flow.
+  - Updated scheduling documentation with both Windows Task Scheduler and macOS cron guidance.
+
+- Deterministic Data Freshness Safeguards:
+  - Added backend freshness evaluator utility based on `last_updated` age checks.
+  - Introduced structured freshness metadata (`status`, `warning`, `oldest_source_age_hours`, `stale_sources`) in `/chat` responses.
+  - Added explicit dining freshness caution behavior for intercepted dining responses.
+
+- Frontend Freshness UX:
+  - Extended chat response types and API mapping to include freshness payloads.
+  - Added visible in-message freshness warning block and supporting styles.
+  - Kept confidence and freshness signals separate to avoid conflating relevance with recency.
+
+- Confidence/Threshold Standardization:
+  - Preserved `0.55` as the official retrieval similarity threshold.
+  - Updated confidence banding to: high `>= 0.75`, medium `>= 0.60`, low `< 0.60`, none on retrieval failure.
+  - Applied confidence cutoff change in chat controller logic.
+
+- Documentation Reconciliation:
+  - Updated API spec to include freshness response fields and revised confidence bands.
+  - Updated design doc language to reflect `0.55` as the official final threshold (not temporary calibration).
+  - Updated reconciliation doc to explicitly compare original `0.70` vs final `0.55`, with implemented-code alignment notes.

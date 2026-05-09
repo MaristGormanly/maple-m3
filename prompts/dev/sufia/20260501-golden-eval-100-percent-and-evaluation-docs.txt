@@ -1,0 +1,25 @@
+Goal: Close the last golden-dataset failure (`temporal-006`), bring the automated golden run to 100% pass rate, and align documentation with how evaluation actually works (heuristic-first harness, single-turn eval vs. multi-turn UI).
+
+AI Tool Used: Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Root-Cause Over Wording Tweaks: Used evaluator source code (`run-golden-eval.js`) plus saved eval JSON to separate contract failures (`must_include_any`) from retrieval-hint scoring, instead of only rephrasing the test query.
+- Behavioral Parity Analysis: Contrasted UI follow-up behavior (history + non-zero temperature) with the eval harness (isolated POSTs + `x-maple-eval` temperature 0) to explain divergent answers on the same natural-language question.
+- Docs-as-Implementation-Truth: Clarified optional LLM judge vs. default heuristic path so the design narrative matches the shipped runner and local DGX/Ollama constraints.
+
+Prompts Used:
+1. "@terminals/5.txt:41-42 Only @eval/test-cases/golden-dataset.json:34-35 is failing. Should I change the wording of the question to make it pass. Why might it be failing?"
+2. "It's strange because I tested out that gym question in the UI twice. The first time, the bot responded along the lines of :\"I don't have enough information to answer that\", but the second time I asked (in the same chat), it responded by giving the gym hours and saying \"yes, it is open late tonight\". Isn't this messing with the test results because it isn't the same answer every time?"
+4. "Is it possible to use llm as a judge for the golden dataset instead of heuristic mode with the NVIDIA DGX Ollama model?"
+
+Results & Refinements:
+- Golden dataset / `temporal-006`:
+  - Confirmed failure mode: heuristic + contract checks require at least one substring match among `must_include_any` in `data.response`; paraphrases like “recreation center” without `gym` / `open` / `tonight` fail even when the answer is reasonable. Optional broadening of expected tokens or a more explicit query was identified as the reliable fix path vs. gaming brittle strings alone.
+  - Retrieved eval artifact (`eval/results/golden-eval-*.json`) showed `retrieval_precision` / `retrieval_recall` at 0 for the failing row in at least one run—useful signal that source title/URL hints did not match `gym` / `recreation` for that attempt.
+
+- Eval vs. UI behavior:
+  - Documented that the golden runner posts one message per case without `conversation_id`, while the UI reuses history and higher default temperature—so identical wording does not guarantee identical outcomes across turns.
+
+- LLM-as-judge vs. DGX Ollama:
+  - Confirmed current `EVAL_JUDGE_MODE=llm` path uses the OpenAI SDK (`responses.create`) and API key; DGX Ollama is not a drop-in judge without a new HTTP/Ollama branch or chat-completions–compatible client. Contract checks such as `must_include_any` still apply regardless of judge mode.
+

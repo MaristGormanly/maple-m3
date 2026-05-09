@@ -1,0 +1,22 @@
+Goal: Transform semi-structured web data (accordions, footers, searchable databases) into structured, vectorized JSON records for RAG. 
+
+AI Tool Used: Google Gemini
+
+Prompt Engineering Tactics Used:
+- Context Injection
+- Constraint Setting
+- Iterative Refinement
+- Negative Prompting - "ignore", "skip"
+
+Prompts Used:
+- "create a script to scrape the frequently asked questions and answers from these sources... Use the Maple M3 design doc requirements."
+- "the questions are in the div class 'panel-heading' and the answers are in 'aria-expanded'"
+- "can you just ignore and skip those [Attachments (0)] instead of wasting records in the database"
+- "show me the full it-helpdesk.js file"
+- "create a script that nicely finds the helpdesk hours... try this page instead, the hours are located in the footer..."
+- "this is a big one, I want to have a scraper that crawls through each link in the library FAQs and records 'question', 'answer', a list of its tagged topics..."
+
+Results & Refinements:
+1. The AI successfully generated a Playwright script that connected to PostgreSQL and vectorized data, but it initially captured unnecessary metadata (Attachments/Related Services).
+2. mplemented a noiseKeywords array and filter logic to sanitize the ingestion stream, significantly improving the quality of the knowledge base.
+3. Adapted the scraper from simple page-level extraction to a "Deep Crawl" strategy for the Library FAQ site, enabling the extraction of granular metadata like "staff answered by" and "tagged topics."

@@ -1,0 +1,182 @@
+<!--
+  client/src/app/app.component.html — Chat UI Template
+
+  Three-section layout (flex column, full viewport height):
+
+  <header class="chat-header">
+    Top bar: brand, New chat (resets thread), theme toggle.
+
+  <main class="chat-window" #scrollMe>
+    Scrollable message list. Iterates over messages[] and renders each turn as a
+    .message-wrapper div classed with the message role (user / assistant).
+    Per assistant message:
+      - Content is rendered as sanitized markdown via the MarkdownPipe ([innerHTML])
+      - A .confidence-badge shows the retrieval confidence level (high / medium / low / none)
+        colour-coded via CSS class binding
+      - Numeric [1] [2] in assistant text link to a collapsible numbered Sources list
+    While isLoading, a loading row shows dots and alternates a “Searching campus docs…” caption.
+    New message bubbles use a short enter animation (respects prefers-reduced-motion).
+    Before the first user message, a .starter-chips block offers topic shortcuts.
+
+  <footer class="chat-input-area">
+    Textarea bound to userInput with Enter-to-send via handleKeydown().
+    Send button disabled while loading or input is empty.
+    Feedback link to the Google Form for student feedback.
+-->
+<div class="chat-layout">
+    <header class="chat-header">
+      <div class="brand">
+        <span class="material-symbols-outlined brand-mark" aria-hidden="true">eco</span>
+        <h1>MAPLE</h1>
+        <span class="brand-subtitle">Campus Navigator</span>
+      </div>
+      <div class="header-actions">
+        <button
+          type="button"
+          class="clear-chat-btn"
+          (click)="clearConversation()"
+          [disabled]="!canClearChat"
+          title="Start over with a new topic (clears chat history on the server for your next message)">
+          New chat
+        </button>
+        <button
+          type="button"
+          class="theme-toggle"
+          (click)="toggleDarkMode()"
+          [attr.aria-pressed]="darkMode"
+          [attr.title]="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+          {{ darkMode ? 'Light mode' : 'Dark mode' }}
+        </button>
+      </div>
+    </header>
+  
+    <main class="chat-window" #scrollMe>
+      <div
+        class="message-wrapper"
+        *ngFor="let msg of messages; let msgIndex = index"
+        [ngClass]="msg.role"
+        [class.message-enter]="msg.animateEnter === true"
+        (animationend)="onMessageEnterAnimationEnd(msg, $event)">
+        
+        <!-- Avatar (Material Symbols via Google Fonts) -->
+        <div class="avatar" aria-hidden="true">
+          <span class="material-symbols-outlined">{{ msg.role === 'assistant' ? 'support_agent' : 'person' }}</span>
+        </div>
+  
+        <div class="message-content" [class.error-msg]="msg.isError">
+          <div class="message-meta assistant-meta" *ngIf="msg.role === 'assistant'">
+            <div class="message-time" *ngIf="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</div>
+            <button
+              type="button"
+              class="copy-answer-btn"
+              (click)="copyAssistantAnswer(msg, msgIndex)"
+              [disabled]="!msg.content.trim()"
+              [attr.aria-label]="
+                copyConfirmMsgIndex === msgIndex ? 'Answer copied' : 'Copy answer to clipboard'
+              ">
+              <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+              <span class="copy-answer-label">{{
+                copyConfirmMsgIndex === msgIndex ? 'Copied' : 'Copy'
+              }}</span>
+            </button>
+          </div>
+          <div class="message-time" *ngIf="msg.role === 'user' && msg.timestamp">
+            {{ formatMessageTime(msg.timestamp) }}
+          </div>
+
+          <!-- Markdown: assistant replies use citation linkify + markdown -->
+          <div
+            class="text"
+            [innerHTML]="msg.role === 'assistant' ? (msg.content | assistantMarkdown:msg.sources:msgIndex) : (msg.content | markdown)"></div>
+  
+          <!-- Confidence Badge (Assistant Only) -->
+          <div class="confidence-badge" *ngIf="msg.role === 'assistant' && msg.confidence && !msg.isError" [ngClass]="msg.confidence">
+            <span class="icon" *ngIf="msg.confidence === 'high'">✓</span>
+            <span class="icon" *ngIf="msg.confidence === 'medium'">⚠️</span>
+            <span class="icon" *ngIf="msg.confidence === 'low' || msg.confidence === 'none'">❌</span>
+            {{ msg.confidence | uppercase }} CONFIDENCE
+          </div>
+
+          <!-- Freshness Warning (Assistant Only) -->
+          <div class="freshness-warning" *ngIf="msg.role === 'assistant' && msg.freshness?.warning && !msg.isError">
+            <strong>Data Freshness Notice:</strong> {{ msg.freshness?.warning }}
+            <span class="freshness-meta" *ngIf="msg.freshness?.oldest_source_age_hours !== null">
+              (Oldest source age: {{ msg.freshness?.oldest_source_age_hours }}h)
+            </span>
+          </div>
+  
+          <!-- Numbered sources (ids match [n] links in assistant markdown) -->
+          <details
+            class="sources-panel"
+            *ngIf="msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && !msg.isError">
+            <summary class="sources-summary">
+              <span class="sources-summary-label">Sources</span>
+              <span class="sources-count">{{ msg.sources.length }}</span>
+            </summary>
+            <ol class="sources-refs-list">
+              <li
+                *ngFor="let source of msg.sources; let si = index"
+                [attr.id]="'cite-' + msgIndex + '-' + (si + 1)"
+                class="sources-refs-item">
+                <a [href]="source.url" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>
+              </li>
+            </ol>
+          </details>
+  
+        </div>
+      </div>
+
+      <div
+        class="starter-chips"
+        *ngIf="showStarterChips"
+        role="region"
+        aria-label="Suggested questions">
+        <p class="starter-chips-label">Try asking…</p>
+        <div class="starter-chips-row">
+          <button
+            type="button"
+            class="starter-chip"
+            *ngFor="let chip of starterChips"
+            (click)="sendSuggestedPrompt(chip.prompt)"
+            [attr.aria-label]="'Ask: ' + chip.prompt">
+            {{ chip.label }}
+          </button>
+        </div>
+      </div>
+  
+      <!-- Loading Indicator -->
+      <div
+        class="message-wrapper assistant loading-row"
+        *ngIf="isLoading"
+        role="status"
+        aria-live="polite"
+        [attr.aria-busy]="true">
+        <div class="avatar" aria-hidden="true">
+          <span class="material-symbols-outlined">support_agent</span>
+        </div>
+        <div class="message-content loading-indicator">
+          <p class="loading-caption" *ngIf="loadingShowCaption">Searching campus docs…</p>
+          <div class="loading-dots" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          </div>
+        </div>
+      </div>
+    </main>
+  
+    <footer class="chat-input-area">
+      <div class="input-container">
+        <textarea 
+          [(ngModel)]="userInput" 
+          (keydown)="handleKeydown($event)"
+          placeholder="Ask about campus events, library hours, IT help, and more..." 
+          rows="1">
+        </textarea>
+        <button (click)="sendMessage()" [disabled]="isLoading || !userInput.trim()">
+          Send
+        </button>
+      </div>
+      <div class="feedback-link">
+        <a href="https://forms.gle/9mP7LXf39HrqGcD46" target="_blank" rel="noopener noreferrer">Give Feedback</a>
+      </div>
+    </footer>
+  </div>

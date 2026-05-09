@@ -13,14 +13,19 @@
  *  .message-content         — bubble styling; .error-msg applies a red left border
  *  .text / ::ng-deep        — markdown output resets (p, a, ul spacing/colour)
  *  .confidence-badge        — colour-coded pill: green (high), amber (medium), red (low/none)
- *  .sources-list            — citation block below assistant responses
+ *  .sources-panel           — collapsible numbered sources (anchors for [n] links)
  *  .chat-input-area         — sticky footer with textarea + Send button + feedback link
- *  .loading-indicator       — three-dot bounce animation shown while isLoading is true
+ *  .loading-indicator       — dots + alternating “Searching campus docs…” while isLoading
+ *  .message-enter           — short fade/slide for new bubbles (honors prefers-reduced-motion)
+ *  .starter-chips           — first-run topic chips (Library, Dining, IT, Events)
+ *  .header-actions          — New chat + theme toggle
+ *  .copy-answer-btn         — copy assistant reply (+ sources) to clipboard
  */
 :host {
     display: block;
-    height: 100vh;
-    background-color: #f4f6f8;
+    height: 100%;
+    background-color: var(--page-bg);
+    color: var(--text-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   }
   
@@ -30,29 +35,79 @@
     height: 100%;
     max-width: 900px;
     margin: 0 auto;
-    background: #ffffff;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    background: var(--chat-surface);
+    box-shadow: var(--chat-shadow);
   }
   
   .chat-header {
-    background-color: #c8102e; // Marist Red
-    color: white;
+    background-color: var(--header-bg);
+    color: var(--header-text);
     padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     
     .brand {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: 0.5rem;
+      min-width: 0;
+
+      .brand-mark {
+        font-size: 1.65rem;
+        flex-shrink: 0;
+        opacity: 0.95;
+      }
       
       h1 {
         margin: 0;
         font-size: 1.5rem;
         font-weight: 700;
+        line-height: 1;
       }
-      span {
+      .brand-subtitle {
         font-size: 1rem;
         opacity: 0.9;
+        margin-left: 0.25rem;
+        padding-left: 0.65rem;
+        border-left: 1px solid rgba(255, 255, 255, 0.35);
+        line-height: 1.2;
       }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .theme-toggle,
+    .clear-chat-btn {
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--header-text);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+      font-family: inherit;
+
+      &:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.55);
+      }
+    }
+
+    .clear-chat-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
   }
   
@@ -63,6 +118,51 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+  }
+
+  .starter-chips {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 0 0 0.25rem 0;
+  }
+
+  .starter-chips-label {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+  }
+
+  .starter-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .starter-chip {
+    appearance: none;
+    border: 1px solid var(--input-border);
+    background: var(--bubble-assistant-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+      border-color: var(--send-bg);
+      background: var(--starter-chip-hover-bg);
+      box-shadow: var(--starter-chip-hover-shadow);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--send-bg);
+      outline-offset: 2px;
+    }
   }
   
   .message-wrapper {
@@ -75,8 +175,8 @@
       flex-direction: row-reverse;
   
       .message-content {
-        background-color: #f0f0f0;
-        color: #333;
+        background-color: var(--bubble-user-bg);
+        color: var(--bubble-user-text);
         border-radius: 12px 12px 0 12px;
       }
     }
@@ -85,25 +185,133 @@
       align-self: flex-start;
   
       .message-content {
-        background-color: #ffffff;
-        border: 1px solid #e0e0e0;
+        background-color: var(--bubble-assistant-bg);
+        border: 1px solid var(--bubble-assistant-border);
         border-radius: 12px 12px 12px 0;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        box-shadow: var(--bubble-assistant-shadow);
       }
     }
   
     .avatar {
-      font-size: 1.5rem;
+      flex-shrink: 0;
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       align-self: flex-end;
+
+      .material-symbols-outlined {
+        font-size: 1.2rem;
+      }
+    }
+
+    &.user .avatar {
+      background: var(--avatar-user-bg);
+      color: var(--avatar-user-icon);
+    }
+
+    &.assistant .avatar {
+      background: var(--avatar-assistant-bg);
+      color: var(--avatar-assistant-icon);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .message-wrapper.message-enter.user {
+      animation: msg-enter-user 0.22s ease-out both;
+    }
+
+    .message-wrapper.message-enter.assistant {
+      animation: msg-enter-assistant 0.22s ease-out both;
+    }
+  }
+
+  @keyframes msg-enter-assistant {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes msg-enter-user {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
   
   .message-content {
     padding: 1rem;
+
+    .assistant-meta {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.4rem;
+
+      .message-time {
+        margin-bottom: 0;
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    .copy-answer-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      flex-shrink: 0;
+      padding: 0.15rem 0.4rem;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+
+      .material-symbols-outlined {
+        font-size: 1rem;
+      }
+
+      .copy-answer-label {
+        line-height: 1.2;
+      }
+
+      &:hover:not(:disabled) {
+        background: rgba(127, 127, 127, 0.18);
+        color: var(--text-primary);
+      }
+
+      &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+    }
+
+    .message-time {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.4rem;
+      line-height: 1.2;
+    }
     
     &.error-msg {
-      border-left: 4px solid #d32f2f;
-      background-color: #fff8f8;
+      border-left: 4px solid var(--error-border);
+      background-color: var(--error-bg);
     }
   
     .text {
@@ -112,9 +320,31 @@
       // Markdown styling resets
       ::ng-deep p { margin-top: 0; margin-bottom: 0.5rem; }
       ::ng-deep p:last-child { margin-bottom: 0; }
-      ::ng-deep a { color: #c8102e; text-decoration: none; font-weight: 500; }
+      ::ng-deep a { color: var(--link-md); text-decoration: none; font-weight: 500; }
       ::ng-deep a:hover { text-decoration: underline; }
+      ::ng-deep a[href^='mailto:'] {
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: 500;
+      }
       ::ng-deep ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+
+      ::ng-deep sup.cite-ref {
+        font-size: 0.7em;
+        font-weight: 700;
+        line-height: 0;
+        vertical-align: super;
+      }
+      ::ng-deep sup.cite-ref a {
+        color: var(--link-md);
+        font-weight: 700;
+        text-decoration: none;
+        border-radius: 2px;
+        padding: 0 0.05em;
+      }
+      ::ng-deep sup.cite-ref a:hover {
+        text-decoration: underline;
+      }
     }
   }
   
@@ -129,32 +359,105 @@
     border-radius: 4px;
     margin-top: 0.75rem;
     
-    &.high { background: #e8f5e9; color: #2e7d32; }
-    &.medium { background: #fff3e0; color: #e65100; }
-    &.low, &.none { background: #ffebee; color: #c62828; }
+    &.high { background: var(--conf-high-bg); color: var(--conf-high-text); }
+    &.medium { background: var(--conf-med-bg); color: var(--conf-med-text); }
+    &.low, &.none { background: var(--conf-low-bg); color: var(--conf-low-text); }
+  }
+
+  .freshness-warning {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-left: 4px solid var(--fresh-border);
+    background: var(--fresh-bg);
+    color: var(--fresh-text);
+    font-size: 0.85rem;
+    border-radius: 6px;
+    line-height: 1.4;
+  }
+
+  .freshness-meta {
+    display: inline-block;
+    margin-left: 0.35rem;
+    font-size: 0.8rem;
+    opacity: 0.9;
   }
   
-  // Source Attribution
-  .sources-list {
+  .sources-panel {
     margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid #eeeeee;
+    border: 1px solid var(--divider);
+    border-radius: 8px;
+    background: var(--page-bg);
+    overflow: hidden;
+  }
+
+  .sources-summary {
+    cursor: pointer;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    user-select: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--send-bg);
+      outline-offset: -2px;
+    }
+  }
+
+  .sources-summary-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sources-count {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: var(--bubble-assistant-bg);
+    border: 1px solid var(--divider);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    line-height: 1.2;
+  }
+
+  .sources-panel[open] .sources-summary {
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .sources-refs-list {
+    margin: 0;
+    padding: 0.65rem 0.85rem 0.8rem 1.5rem;
     font-size: 0.85rem;
-  
-    strong { color: #555; }
-    
-    ul {
-      list-style-type: none;
-      padding: 0;
-      margin: 0.25rem 0 0 0;
-      
-      li {
-        margin-bottom: 0.25rem;
-        a {
-          color: #1976d2;
-          text-decoration: none;
-          &:hover { text-decoration: underline; }
-        }
+    line-height: 1.45;
+  }
+
+  .sources-refs-item {
+    scroll-margin-top: 0.85rem;
+    padding-left: 0.35rem;
+    margin-bottom: 0.35rem;
+
+    &::marker {
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    a {
+      color: var(--link-source);
+      text-decoration: none;
+      &:hover {
+        text-decoration: underline;
       }
     }
   }
@@ -162,8 +465,8 @@
   // Input Area
   .chat-input-area {
     padding: 1rem 1.5rem;
-    background: #ffffff;
-    border-top: 1px solid #e0e0e0;
+    background: var(--footer-bg);
+    border-top: 1px solid var(--footer-border);
   
     .input-container {
       display: flex;
@@ -174,16 +477,18 @@
         flex: 1;
         resize: none;
         padding: 0.75rem;
-        border: 1px solid #ccc;
+        border: 1px solid var(--input-border);
         border-radius: 8px;
         font-family: inherit;
         font-size: 1rem;
         max-height: 120px;
+        background: var(--input-bg);
+        color: var(--input-text);
         &:focus { outline: none; border-color: #c8102e; }
       }
   
       button {
-        background: #c8102e;
+        background: var(--send-bg);
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
@@ -193,8 +498,8 @@
         cursor: pointer;
         transition: background 0.2s;
   
-        &:hover:not(:disabled) { background: #a00d24; }
-        &:disabled { background: #e0e0e0; cursor: not-allowed; }
+        &:hover:not(:disabled) { background: var(--send-bg-hover); }
+        &:disabled { background: var(--send-disabled); cursor: not-allowed; }
       }
     }
   
@@ -202,29 +507,53 @@
       text-align: center;
       margin-top: 0.75rem;
       font-size: 0.8rem;
-      a { color: #666; text-decoration: none; }
+      a { color: var(--text-muted); text-decoration: none; }
       a:hover { text-decoration: underline; }
     }
   }
   
-  // Loading Dots Animation
   .loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 1rem 1.5rem;
+  }
+
+  .loading-caption {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    max-width: 16rem;
+  }
+
+  .loading-dots {
     display: flex;
     gap: 4px;
     align-items: center;
-    padding: 1rem 1.5rem;
-    
+
     .dot {
       width: 8px;
       height: 8px;
-      background: #999;
+      background: var(--dot);
       border-radius: 50%;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .loading-dots .dot {
       animation: bounce 1.4s infinite ease-in-out both;
     }
-    .dot:nth-child(1) { animation-delay: -0.32s; }
-    .dot:nth-child(2) { animation-delay: -0.16s; }
+    .loading-dots .dot:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    .loading-dots .dot:nth-child(2) {
+      animation-delay: -0.16s;
+    }
   }
-  
+
   @keyframes bounce {
     0%, 80%, 100% { transform: scale(0); }
     40% { transform: scale(1); }

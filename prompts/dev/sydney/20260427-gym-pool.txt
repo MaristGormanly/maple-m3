@@ -1,0 +1,12 @@
+
+Goal: Fix the gym-pool script. The data is being scraped correctly but the data is too sparse in language for the model to match to for most questions.
+Tool used: Cursor agent
+
+Context: 
+Has the architecture doc, the data that is scraped from gym-pool and the script.
+
+Prompt:
+Enrich the @data/scripts/gym-pool.js data so that it will respond more often
+
+Result: Adding a buildEnrichedChunkContent helper that appends aliases, categories, and intent phrases per facility so embeddings align with natural queries.
+Now answers the questions about gym and pool it failed prior.

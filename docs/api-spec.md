@@ -1,7 +1,7 @@
 # MAPLE M3 — API Specification
 
-**Module:** M3: Campus Services & Student Life Navigator  
-**Base path:** `/api/v1/campus`  
+**Module:** M3: Campus Services & Student Life Navigator
+**Base path:** `/api/v1/campus`
 **Envelope:** All responses follow the MAPLE standard JSON envelope (`success`, `data`, `error`, `metadata`).
 
 ---
@@ -24,16 +24,18 @@
 
 ## `POST /api/v1/campus/chat`
 
-Primary RAG chat endpoint. Accepts a student's natural language query, performs vector retrieval against ingested campus data, and returns an AI-generated response with source attribution and a confidence rating.
+Primary RAG chat endpoint. Accepts a student's natural language query, performs vector retrieval against ingested campus data, and returns an AI-generated response with source attribution, a confidence rating, and data freshness metadata.
 
 **Rate limit:** 30 requests per IP per minute.
+
+> **Dining behavior (DB-first + fallback):** Dining-related queries are first routed through normal retrieval with `source_type = "Dining"` (ingested from `data/scripts/dining-manual.js`). If retrieval returns no dining chunks, the controller falls back to a hardcoded dining response with live links to `dineoncampus.com/marist`. Fallback responses use `confidence: "high"` and `metadata.model: "hardcoded"`.
 
 **Request body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `message` | string | yes | The student's natural language query |
-| `conversation_id` | string | no | Existing conversation ID for multi-turn context |
+| `conversation_id` | string | no | Existing conversation ID for multi-turn context. When provided, the last 5 turns are loaded from `ChatHistory` and prepended to the LLM messages array. |
 | `context` | object | no | Optional user profile data (e.g. major, year) to personalize the response |
 
 **Example request**
@@ -60,7 +62,13 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
         "relevance_score": 0.8214
       }
     ],
-    "confidence": "high"
+    "confidence": "high",
+    "freshness": {
+      "status": "fresh",
+      "warning": null,
+      "oldest_source_age_hours": 12.4,
+      "stale_sources": []
+    }
   },
   "error": null,
   "metadata": {
@@ -73,7 +81,27 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 }
 ```
 
-**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.65) | `"low"` (below 0.65)
+**`confidence` values:** `"high"` (top score ≥ 0.75) | `"medium"` (≥ 0.60) | `"low"` (below 0.60) | `"none"` (retrieval failed)
+
+**`freshness.status` values:** `"fresh"` (all retrieved chunks within freshness thresholds) | `"aging"` (approaching threshold) | `"stale"` (one or more chunks exceed thresholds) | `"unknown"` (missing/unparseable timestamp data)
+
+**`freshness` object (200 responses):**
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | string | Freshness state: `fresh`, `aging`, `stale`, or `unknown` |
+| `warning` | string \| null | User-facing warning message when staleness or uncertainty is detected |
+| `oldest_source_age_hours` | number \| null | Age in hours of the oldest retrieved source timestamp |
+| `stale_sources` | array | Sources that exceeded stale threshold |
+
+**`stale_sources[]` item shape:**
+
+| Field | Type | Description |
+|---|---|---|
+| `title` | string | Source title |
+| `source_type` | string | Source domain/category (`Events`, `Library`, etc.) |
+| `age_hours` | number | Current source age in hours |
+| `stale_after_hours` | number | Threshold after which source is considered stale |
 
 **Error responses**
 
@@ -113,13 +141,13 @@ Primary RAG chat endpoint. Accepts a student's natural language query, performs 
 
 ## `GET /api/v1/campus/status`
 
-Returns recently ingested campus events from the `Documents` table (`source_type = 'Events'`). Supports optional date-based filtering. Returns up to 10 records, ordered by most recently ingested.
+Returns recently ingested campus events from the `Documents` table (`source_type = 'Events'`). Supports optional date-based filtering. Returns up to 10 records ordered by most recently ingested.
 
 **Query parameters**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `date` | string (`YYYY-MM-DD`) | no | Filter to events ingested on a specific date. If omitted, returns the 10 most recent event records. |
+| `date` | string (`YYYY-MM-DD`) | no | Filter to events ingested on a specific date. Must match the `YYYY-MM-DD` format exactly. If omitted, returns the 10 most recent event records. |
 
 **Response — 200 OK**
 ```json
@@ -146,6 +174,7 @@ Returns recently ingested campus events from the `Documents` table (`source_type
 
 | HTTP | `error.code` | Condition |
 |---|---|---|
+| 400 | `VALIDATION_ERROR` | `date` parameter is present but not in `YYYY-MM-DD` format |
 | 500 | `INTERNAL_ERROR` | Database query failed |
 
 ---
@@ -154,18 +183,27 @@ Returns recently ingested campus events from the `Documents` table (`source_type
 
 Triggers a background data ingestion and vectorization pipeline script. Returns immediately (HTTP 202) while the job runs asynchronously.
 
-**MVP scope (Lab 2):** Only `source_type: "Admin"` is supported via this endpoint. All other domain ingestion is run directly via the scripts in `data/scripts/`.
+**Authentication:** Requires a Bearer token in the `Authorization` header matching the `ADMIN_TOKEN` environment variable.
+
+```
+Authorization: Bearer <ADMIN_TOKEN>
+```
+
+**Scope:** This endpoint triggers batch ingestion by schedule group using `run-ingestion-batch.js`. Dining ingestion is not currently part of the API-triggered batches; dining queries use DB-first retrieval (`source_type = "Dining"`) with a hardcoded fallback in `server/src/utils/dining.js` when retrieval returns no dining chunks.
 
 **Request body**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `source_type` | string | yes | The domain to ingest. Only `"Admin"` is accepted for MVP. |
+| `batch` | string | yes* | Ingestion batch to run. Allowed values: `"daily"`, `"weekly"`, `"monthly"`. |
+| `source_type` | string | no | Legacy fallback. `"Admin"` maps to the `"weekly"` batch if `batch` is omitted. |
+
+\* `batch` is required unless using legacy `source_type: "Admin"`.
 
 **Example request**
 ```json
 {
-  "source_type": "Admin"
+  "batch": "weekly"
 }
 ```
 
@@ -175,7 +213,8 @@ Triggers a background data ingestion and vectorization pipeline script. Returns 
   "success": true,
   "data": {
     "message": "Ingestion pipeline triggered successfully in the background.",
-    "jobId": "job_1713449400000"
+    "jobId": "job_1713449400000",
+    "batch": "weekly"
   },
   "error": null,
   "metadata": {
@@ -190,4 +229,6 @@ Triggers a background data ingestion and vectorization pipeline script. Returns 
 
 | HTTP | `error.code` | Condition |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | `source_type` is missing or not `"Admin"` |
+| 400 | `VALIDATION_ERROR` | `batch` is missing/invalid and no legacy `source_type: "Admin"` fallback is provided |
+| 401 | `UNAUTHORIZED` | `Authorization` header is absent or not in `Bearer` format |
+| 403 | `FORBIDDEN` | Bearer token does not match `ADMIN_TOKEN` |

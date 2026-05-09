@@ -1,0 +1,35 @@
+Goal: Reconcile project documentation and operations guidance with the decision to keep MAPLE M3 local-only (no cloud deployment), then improve ingestion log organization for maintainability by separating ingestion logs from app runtime logs.
+
+AI Tool Used: Gemini / Cursor IDE
+
+Prompt Engineering Tactics Used:
+- Decision-to-Docs Synchronization: Used the explicit product decision ("local only, not DigitalOcean") as the authoritative constraint and propagated it through operational docs and design narrative.
+- Runtime-vs-Documentation Cross-Check: Verified code behavior (ingestion runner path creation, log path constants) before updating docs to avoid drift between instructions and actual execution.
+- Minimal-Scope Refactor Prompting: Framed logging changes as a narrow path/structure update (`logs/ingestion/`) to improve clarity without altering ingestion batch logic.
+
+Prompts Used:
+2. "Update `docs/MAPLE_M3 Project Design Doc.md` to reflect local-only deployment and update monthly cost table."
+5. "Will this automatically create the local ingestion folder when the first automatic ingestion is run?"
+
+Results & Refinements:
+- Local-only deployment alignment across docs:
+  - Updated deployment wording in project documentation to remove cloud-hosting assumptions and reflect local runtime.
+  - Revised design-doc deployment/security language to local access + `.env`-based secret handling.
+  - Updated monthly infrastructure table to reflect local operation cost profile (`$0.00` total for cloud-hosted components).
+
+- Ingestion scheduling/docs cleanup:
+  - Replaced cloud-specific scheduling guidance with local Windows Task Scheduler instructions in ingestion scheduling docs.
+  - Ensured operational steps match the Windows-based local development environment.
+
+- Ingestion log structure improvement:
+  - Updated ingestion runner log destination to `logs/ingestion/` instead of the shared top-level `logs/`.
+  - Updated ingestion schedule documentation log path examples accordingly.
+  - Preserved existing batch execution behavior (daily/midweek/weekly), timeout handling, and failure semantics.
+
+- Logging requirement clarification:
+  - Confirmed ingestion file logs are not strictly required for functionality.
+  - Documented rationale for keeping them: easier debugging, historical run traceability, and failure triage.
+
+- Folder auto-creation behavior verified:
+  - Confirmed ingestion runner automatically creates the target ingestion log directory on first run using recursive directory creation.
+  - No manual pre-creation step is required before scheduled execution.

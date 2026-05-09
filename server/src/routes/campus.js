@@ -8,19 +8,17 @@
  *  POST /chat    → chat controller (RAG pipeline, rate-limited)
  *  GET  /status  → inline handler; queries Documents for source_type='Events' and
  *                  returns up to 10 formatted event records (supports ?date= filtering)
- *  POST /ingest  → inline handler; triggers the admin-directory.js scraping script
- *                  asynchronously and returns a 202 with a job ID (MVP: Admin only)
- *
- * Note: /ingest accepts only source_type='Admin' for the Lab 2 MVP. All other domain
- * ingestion is run directly via the scripts in data/scripts/.
+ *  POST /ingest  → inline handler; triggers run-ingestion-batch.js asynchronously
+ *                  and returns a 202 with a job ID + selected batch.
  */
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 const { handleChat } = require('../controllers/chat');
-const { apiLimiter } = require('../middleware/security');
+const { apiLimiter, requireAdminToken } = require('../middleware/security');
 const retrievalService = require('../services/retrieval');
+const VALID_BATCHES = new Set(['daily', 'weekly', 'monthly']);
 
 // Helper to extract structured event data from the raw scraped text chunks
 function mapEventDocumentRow(row) {
@@ -42,6 +40,16 @@ router.get('/status', async (req, res) => {
   const timestamp = new Date().toISOString();
   try {
     const { date } = req.query; // filters by ingest date (last_updated), e.g. ?date=2026-04-15
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'date parameter must be in YYYY-MM-DD format.' },
+        metadata: { timestamp, module: 'm3', version: '1.0.0' }
+      });
+    }
+
     const pool = retrievalService.getDbPool();
     
     let queryText = '';
@@ -77,35 +85,42 @@ router.get('/status', async (req, res) => {
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });
   } catch (err) {
+    console.error('[/status] Database query failed:', err.message);
     res.status(500).json({ 
       success: false, 
       data: null, 
-      error: { code: 'INTERNAL_ERROR', message: 'Database query failed: ' + err.message },
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve events.' },
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });
   }
 });
 
-// Trigger actual data ingestion pipeline script
-router.post('/ingest', (req, res) => {
+// Trigger actual data ingestion pipeline script (Admin token required)
+router.post('/ingest', requireAdminToken, (req, res) => {
   const timestamp = new Date().toISOString();
-  const { source_type } = req.body;
-  
-  if (source_type !== 'Admin') {
+  const { batch, source_type } = req.body || {};
+
+  // Backward compatibility: source_type=Admin maps to weekly batch.
+  const requestedBatch = batch || (source_type === 'Admin' ? 'weekly' : null);
+
+  if (!requestedBatch || !VALID_BATCHES.has(requestedBatch)) {
     return res.status(400).json({ 
       success: false, 
       data: null, 
-      error: { code: 'VALIDATION_ERROR', message: "Only 'Admin' source ingestion is supported via API for MVP." },
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: "Provide a valid ingestion batch: 'daily', 'weekly', or 'monthly'. Legacy fallback: source_type='Admin' runs the weekly batch."
+      },
       metadata: { timestamp, module: "m3", version: "1.0.0" }
     });
   }
 
   const jobId = `job_${Date.now()}`;
-  const scriptPath = path.join(__dirname, '../../../data/scripts/admin-directory.js');
+  const runnerPath = path.join(__dirname, '../../../data/scripts/run-ingestion-batch.js');
   
   // Trigger the script asynchronously (pseudo job-tracking)
-  console.log(`[Ingest Job Started] ID: ${jobId}`);
-  exec(`node ${scriptPath}`, (error, stdout, stderr) => {
+  console.log(`[Ingest Job Started] ID: ${jobId} | batch: ${requestedBatch}`);
+  execFile('node', [runnerPath, requestedBatch], (error, stdout, stderr) => {
     if (error) console.error(`[Ingest Job Failed] ID: ${jobId} | Error: ${error.message}`);
     if (stderr) console.error(`[Ingest Job Stderr] ID: ${jobId} | ${stderr}`);
     console.log(`[Ingest Job Completed] ID: ${jobId}\n${stdout}`);
@@ -113,7 +128,11 @@ router.post('/ingest', (req, res) => {
 
   res.status(202).json({
     success: true,
-    data: { message: "Ingestion pipeline triggered successfully in the background.", jobId: jobId },
+    data: {
+      message: "Ingestion pipeline triggered successfully in the background.",
+      jobId: jobId,
+      batch: requestedBatch
+    },
     error: null,
     metadata: { timestamp, module: "m3", version: "1.0.0" }
   });

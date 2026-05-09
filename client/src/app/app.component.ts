@@ -16,72 +16,272 @@
  *  - sendMessage()   — pushes the user message, calls CampusApiService, appends the
  *                      assistant response (or a friendly error message on failure)
  *  - handleKeydown() — submits on Enter (without Shift) for natural chat UX
- *  - scrollToBottom()— called after every view check to keep the latest message visible
+ *  - scheduleScrollToBottom() — defers scroll until after layout so markdown / sources height is final
+ *  - starterChips / showStarterChips / sendSuggestedPrompt() — first-run suggestion chips
+ *  - copyAssistantAnswer() / clearConversation() — copy reply + reset thread (conversationId)
  *
  * Template and styles are in app.component.html and app.component.scss respectively.
- * Depends on: CampusApiService, MarkdownPipe, ChatMessage type.
+ * Depends on: CampusApiService, MarkdownPipe, AssistantMarkdownPipe, ChatMessage type.
  */
-import { Component, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef, NgZone } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ViewChild, ElementRef, ChangeDetectorRef, NgZone, OnInit, OnDestroy, Inject } from '@angular/core';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CampusApiService } from './services/campus-api.service';
 import { ChatMessage } from './types/chat.types';
 import { MarkdownPipe } from './pipes/markdown.pipe';
+import { AssistantMarkdownPipe } from './pipes/assistant-markdown.pipe';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, MarkdownPipe],
+  imports: [CommonModule, FormsModule, MarkdownPipe, AssistantMarkdownPipe],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent implements AfterViewChecked {
+export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('scrollMe') private myScrollContainer!: ElementRef;
+
+  private static readonly WELCOME_TEXT =
+    'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.';
+
+  private readonly THEME_STORAGE_KEY = 'maple-m3-theme'; // 'dark' | 'light'
+  private loadingCaptionInterval: ReturnType<typeof setInterval> | null = null;
+  private copyConfirmTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly enterAnimNames = new Set(['msg-enter-user', 'msg-enter-assistant']);
+
+  darkMode = false;
+
+  /** Toggles with dots while waiting for the assistant (sets expectation for latency). */
+  loadingShowCaption = false;
+
+  /** Which message index last showed “Copied” after copy (cleared after a short delay). */
+  copyConfirmMsgIndex: number | null = null;
 
   userInput: string = '';
   messages: ChatMessage[] = [
-    { role: 'assistant', content: 'Hello! I am the MAPLE Campus Navigator. Ask me about library hours, IT help, and more.' }
+    {
+      role: 'assistant',
+      content: AppComponent.WELCOME_TEXT,
+      timestamp: new Date().toISOString()
+    }
   ];
   isLoading: boolean = false;
   conversationId: string | null = null;
 
+  /** Shown below the welcome message until the user sends their first message. */
+  readonly starterChips: ReadonlyArray<{ label: string; prompt: string }> = [
+    { label: 'Library', prompt: 'What can I do at the library?' },
+    { label: 'Dining', prompt: 'Where can I find dining options and hours on campus?' },
+    { label: 'IT', prompt: 'How do I connect to the wifi?' },
+    { label: 'Events', prompt: 'What campus events are coming up?' }
+  ];
+
+  get showStarterChips(): boolean {
+    return !this.isLoading && !this.messages.some((m) => m.role === 'user');
+  }
+
+  get canClearChat(): boolean {
+    return !this.isLoading && (this.messages.length > 1 || this.conversationId != null);
+  }
+
   constructor(
     private campusApi: CampusApiService,
     private cdr: ChangeDetectorRef,
-    private zone: NgZone
+    private zone: NgZone,
+    @Inject(DOCUMENT) private document: Document
   ) {}
 
-  ngAfterViewChecked() {
-    this.scrollToBottom();
+  ngOnInit(): void {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(this.THEME_STORAGE_KEY);
+    } catch {
+      saved = null;
+    }
+
+    if (saved === 'dark' || saved === 'light') {
+      this.applyTheme(saved === 'dark');
+      return;
+    }
+
+    const prefersDark =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    this.applyTheme(prefersDark);
+  }
+
+  ngOnDestroy(): void {
+    this.stopLoadingCaptionAlternate();
+    if (this.copyConfirmTimer !== null) {
+      clearTimeout(this.copyConfirmTimer);
+      this.copyConfirmTimer = null;
+    }
   }
 
   scrollToBottom(): void {
     try {
-      this.myScrollContainer.nativeElement.scrollTop = this.myScrollContainer.nativeElement.scrollHeight;
-    } catch(err) {}
+      const el = this.myScrollContainer.nativeElement;
+      el.scrollTop = el.scrollHeight;
+    } catch {
+      /* view not ready */
+    }
+  }
+
+  /** Waits for paint/layout so innerHTML (markdown) has updated scrollHeight before scrolling. */
+  private scheduleScrollToBottom(): void {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.scrollToBottom());
+    });
+  }
+
+  onMessageEnterAnimationEnd(msg: ChatMessage, event: AnimationEvent): void {
+    if (event.target !== event.currentTarget) return;
+    if (!this.enterAnimNames.has(event.animationName)) return;
+    msg.animateEnter = false;
+    this.cdr.markForCheck();
+  }
+
+  private clearEnterIfReducedMotion(msg: ChatMessage): void {
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    queueMicrotask(() => {
+      msg.animateEnter = false;
+      this.cdr.markForCheck();
+    });
+  }
+
+  private startLoadingCaptionAlternate(): void {
+    this.stopLoadingCaptionAlternate();
+    this.loadingShowCaption = false;
+    this.loadingCaptionInterval = setInterval(() => {
+      this.loadingShowCaption = !this.loadingShowCaption;
+      this.cdr.markForCheck();
+    }, 2400);
+  }
+
+  private stopLoadingCaptionAlternate(): void {
+    if (this.loadingCaptionInterval !== null) {
+      clearInterval(this.loadingCaptionInterval);
+      this.loadingCaptionInterval = null;
+    }
+    this.loadingShowCaption = false;
+  }
+
+  copyAssistantAnswer(msg: ChatMessage, msgIndex: number): void {
+    if (msg.role !== 'assistant' || !msg.content?.trim()) return;
+
+    let text = msg.content.trim();
+    if (msg.sources?.length && !msg.isError) {
+      text +=
+        '\n\nSources:\n' +
+        msg.sources.map((s, i) => `${i + 1}. ${s.title} — ${s.url}`).join('\n');
+    }
+
+    this.writeClipboard(text)
+      .then(() => {
+        this.zone.run(() => {
+          this.copyConfirmMsgIndex = msgIndex;
+          if (this.copyConfirmTimer !== null) clearTimeout(this.copyConfirmTimer);
+          this.copyConfirmTimer = setTimeout(() => {
+            this.copyConfirmMsgIndex = null;
+            this.cdr.markForCheck();
+          }, 2000);
+          this.cdr.markForCheck();
+        });
+      })
+      .catch(() => {
+        /* clipboard denied or unavailable */
+      });
+  }
+
+  clearConversation(): void {
+    if (!this.canClearChat) return;
+    this.messages = [
+      {
+        role: 'assistant',
+        content: AppComponent.WELCOME_TEXT,
+        timestamp: new Date().toISOString()
+      }
+    ];
+    this.conversationId = null;
+    this.userInput = '';
+    this.copyConfirmMsgIndex = null;
+    if (this.copyConfirmTimer !== null) {
+      clearTimeout(this.copyConfirmTimer);
+      this.copyConfirmTimer = null;
+    }
+    this.cdr.detectChanges();
+    this.scheduleScrollToBottom();
+  }
+
+  private writeClipboard(text: string): Promise<void> {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        const ta = this.document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        this.document.body.appendChild(ta);
+        ta.select();
+        const ok = this.document.execCommand('copy');
+        this.document.body.removeChild(ta);
+        if (ok) resolve();
+        else reject(new Error('execCommand copy failed'));
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  sendSuggestedPrompt(prompt: string): void {
+    const text = prompt.trim();
+    if (!text || this.isLoading) return;
+    this.userInput = text;
+    this.sendMessage();
   }
 
   sendMessage() {
     if (!this.userInput.trim() || this.isLoading) return;
 
     const userText = this.userInput.trim();
-    this.messages.push({ role: 'user', content: userText });
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: userText,
+      timestamp: new Date().toISOString(),
+      animateEnter: true
+    };
+    this.messages.push(userMsg);
+    this.clearEnterIfReducedMotion(userMsg);
     this.userInput = '';
     this.isLoading = true;
+    this.startLoadingCaptionAlternate();
+    this.cdr.detectChanges();
+    this.scheduleScrollToBottom();
 
     this.campusApi.sendMessage(userText, this.conversationId).subscribe({
       next: (responseMsg) => {
         this.zone.run(() => {
-          this.messages.push(responseMsg);
+          this.stopLoadingCaptionAlternate();
+          const assistantMsg: ChatMessage = { ...responseMsg, animateEnter: true };
+          this.messages.push(assistantMsg);
+          this.clearEnterIfReducedMotion(assistantMsg);
           if (responseMsg.conversationId) {
             this.conversationId = responseMsg.conversationId;
           }
           this.isLoading = false;
           this.cdr.detectChanges();
+          this.scheduleScrollToBottom();
         });
       },
       error: (err) => {
         this.zone.run(() => {
+          this.stopLoadingCaptionAlternate();
           // REVISED: Provide a fallback message in the UI so the user isn't stuck
           console.error('API Error:', err);
           
@@ -91,13 +291,18 @@ export class AppComponent implements AfterViewChecked {
              friendlyMessage = "I couldn't find any documents related to that request. Try asking about a different campus topic.";
           }
 
-          this.messages.push({ 
-            role: 'assistant', 
-            content: friendlyMessage 
-          });
-          
+          const errMsg: ChatMessage = {
+            role: 'assistant',
+            content: friendlyMessage,
+            timestamp: new Date().toISOString(),
+            animateEnter: true
+          };
+          this.messages.push(errMsg);
+          this.clearEnterIfReducedMotion(errMsg);
+
           this.isLoading = false;
           this.cdr.detectChanges();
+          this.scheduleScrollToBottom();
         });
       }
     });
@@ -108,5 +313,32 @@ export class AppComponent implements AfterViewChecked {
       event.preventDefault();
       this.sendMessage();
     }
+  }
+
+  formatMessageTime(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  }
+
+  toggleDarkMode(): void {
+    this.applyTheme(!this.darkMode);
+  }
+
+  private applyTheme(isDark: boolean): void {
+    this.darkMode = isDark;
+    this.document.documentElement.classList.toggle('theme-dark', isDark);
+    try {
+      localStorage.setItem(this.THEME_STORAGE_KEY, isDark ? 'dark' : 'light');
+    } catch {
+      // ignore storage failures (private mode, etc.)
+    }
+    this.cdr.markForCheck();
   }
 }

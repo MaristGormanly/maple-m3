@@ -52,6 +52,8 @@ export class CampusApiService {
           content: res.data.response,
           sources: res.data.sources,
           confidence: res.data.confidence,
+          freshness: res.data.freshness,
+          timestamp: res.metadata?.timestamp || new Date().toISOString(),
           conversationId: res.data.conversation_id, // Extract backend's ID
           isError: false
         } as ChatMessage;
@@ -76,6 +78,7 @@ export class CampusApiService {
           content: fallbackMessage,
           sources: [],
           confidence: confidenceFlag,
+          timestamp: new Date().toISOString(),
           isError: true
         } as ChatMessage);
       })

@@ -1,0 +1,11 @@
+Goal: The campus events scraper is mismatching the date of some of the events and that needs to be fixed.
+
+AI Tool Used: Google Gemini
+
+Prompts Used:
+The campus events scraper is mismatching the date of some of the events. Go through and reevaluate the script to fix this bug. Don't change any of the other database logic.
+
+Results & Refinements:
+Was able to fix the bug after a couple tries and now the date and event names are correct.
+
+I found that its best to not provide a lot of additional context when fixing small errors with the scrappers.

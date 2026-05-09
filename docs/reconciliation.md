@@ -74,6 +74,7 @@ This document traces every significant decision from the original design doc thr
 - **Conversation history injection:** When `conversation_id` is present, the last 5 turns from `ChatHistory` are loaded and prepended to the LLM `messages[]` array. The original doc described `ChatHistory` as storage for "history and context-aware follow-up questions" but did not specify how history would be re-injected.
 - **Dining path (DB-first + fallback):** Dining-related queries are routed to Dining retrieval first (`source_type='Dining'`), with hardcoded fallback only if retrieval returns no dining chunks (see Dining section below).
 - **Confidence scoring:** Computed from the top retrieval score: ≥0.75 = `"high"`, ≥0.60 = `"medium"`, below = `"low"`, retrieval failure = `"none"`.
+- **Freshness evaluation:** Every successful response includes a `freshness` object (`status`, `warning`, `oldest_source_age_hours`, `stale_sources`) computed by `server/src/utils/dataFreshness.js` after retrieval. Each domain has a configurable staleness threshold (e.g., 48 hours for Events and News, 10 days for Admin and Clubs). The Angular client surfaces the warning string to the student when `status` is `"aging"`, `"stale"`, or `"unknown"`. This was not in the original spec but was added as a data-currency safeguard.
 
 ### `/api/v1/campus/status` — Evolved
 
@@ -128,8 +129,19 @@ This document traces every significant decision from the original design doc thr
 
 ### Club Directory Source — Evolved
 
-**Original:** `marist.edu/student-life/involvement`  
-**Updated & Implemented:** `marist.edu/clubs` (current URL for the club directory).
+**Original:** `marist.edu/clubs`  
+**Updated & Implemented:** `marist.edu/student-life/involvement` (the active URL for the involvement and clubs page at time of implementation).
+
+### Scraper Tool — Evolved (IT/FAQ, Gym/Pool, Club Directory)
+
+**Original:** The design doc specified **Cheerio** (static HTML parsing) for three sources:
+- IT/FAQ — accordion components on the TeamDynamix portal
+- Gym/Pool — static facility hours table on `goredfoxes.com`
+- Club Directory — static club list on `marist.edu/student-life/involvement`
+
+**Updated & Implemented:** All three sources use **Playwright** (headless Chromium). Every scraper in `data/scripts/` uses `playwright/chromium` — Cheerio was not used in the final implementation.
+
+**Rationale:** During implementation it became clear that all three sources either load content dynamically via JavaScript or require navigation that Cheerio's static HTML parsing cannot handle reliably. Playwright was already a project dependency for other scrapers (Events, Admin, News, Intramurals), so unifying on a single browser automation library reduced the dependency surface and simplified debugging across the pipeline.
 
 ### Campus Events Source — Evolved
 
@@ -246,6 +258,9 @@ This document traces every significant decision from the original design doc thr
 | `/status` data source | ⚠️ Evolved | `CampusEvents` table | `Documents` table filtered by `source_type='Events'` |
 | Observability logs | ⚠️ Evolved | LLM fields only specified | Extended to retrieval logs with matching schema |
 | CRON scheduling | ⚠️ Evolved | Daily automated re-ingestion | Batch runner + documented Task Scheduler/cron automation (`daily`, `weekly`, `monthly`) |
+| Club directory URL | ⚠️ Evolved | `marist.edu/clubs` | `marist.edu/student-life/involvement` |
+| Scraper tool (IT/FAQ, Gym/Pool, Clubs) | ⚠️ Evolved | Cheerio (static HTML parsing) | Playwright (headless Chromium) — all scrapers unified on Playwright |
+| Response `freshness` field | ⚠️ Evolved (Addition) | Not in original spec | `freshness` object on every `/chat` success response; domain-specific staleness thresholds via `dataFreshness.js` |
 | Dietary restriction detail | ❌ Descoped | Stretch goal | Blocked by Cloudflare; menu link redirect provided |
 | Shuttle/laundry availability | ❌ Descoped | Stretch goal | Requires real-time integrations out of scope |
 | Smoke test suite | ⚠️ Evolved (Addition) | Not planned | `server/tests/smoke.js` added |

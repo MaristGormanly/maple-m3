@@ -1,6 +1,6 @@
 # MAPLE M3 — system architecture
 
-This figure matches the **logical layout** of the [MAPLE M3 Project Design Doc](./MAPLE_M3%20Project%20Design%20Doc.md#architecture-diagram) architecture diagram; the only intentional difference is the **AI Integration** label, which names the **actual** models in use (Ollama on DGX / OpenAI) instead of the generic “cloud frontier” wording.
+This figure matches the [MAPLE M3 Project Design Doc](./MAPLE-M3-Project-Design-Doc.md#architecture-diagram) architecture diagram. The **AI Integration** label names the actual models in use (`llama3.1:8b` via Ollama on DGX Spark, or `gpt-4o-mini` via OpenAI, toggled by `USE_LOCAL_MODEL`).
 
 ```mermaid
 graph TD
@@ -10,17 +10,15 @@ graph TD
     end
 
     subgraph Backend ["Backend: Node.js / Express"]
-        Router["Router /api/v1/campus"]
-        ChatCtl["Chat Controller"]
-        StatusCtl["Status/Events Controller"]
-        LLM["LLM Service"]
-        Retrieval["Retrieval Service"]
-        RelQuery["Relational Query Service"]
+        Router["Router /api/v1/campus\n(campus.js)"]
+        ChatCtl["Chat Controller\n(controllers/chat.js)"]
+        LLM["LLM Service\n(services/llm.js)"]
+        Retrieval["Retrieval Service\n(services/retrieval.js)"]
     end
 
     subgraph Storage ["Storage & Processing"]
-        Scrapers["Scrapers/Parsers"]
-        Embed["Embedding Model"]
+        Scrapers["Scrapers/Parsers\n(data/scripts/)"]
+        Embed["Embedding Model\n(nomic-embed-text / text-embedding-3-small)"]
         DB[("PostgreSQL + pgvector")]
     end
 
@@ -31,20 +29,20 @@ graph TD
     UI --> APIClient
     APIClient --> Router
 
-    Router -->|/api/v1/campus/chat| ChatCtl
-    Router -->|/api/v1/campus/status| StatusCtl
+    Router -->|"POST /chat"| ChatCtl
+    Router -->|"GET /status\nPOST /ingest\n(inline handlers)"| DB
 
     ChatCtl --> LLM
     ChatCtl --> Retrieval
 
-    StatusCtl --> RelQuery
-
     Retrieval --> DB
-    RelQuery --> DB
     Scrapers --> Embed
     Embed --> DB
 
     LLM --> Frontier
 ```
 
-**Implementation note:** The design doc diagram did not depict **POST `/api/v1/campus/ingest`**; in the current codebase, that route triggers **Scrapers/Parsers** in the background and ultimately feeds the same **Embedding Model → PostgreSQL** path shown above.
+**Route responsibilities:**
+- **`POST /chat`** → Chat Controller → LLM Service + Retrieval Service → PostgreSQL + pgvector
+- **`GET /status`** → inline handler in `campus.js` → queries `Documents` (`source_type = 'Events'`) directly via the shared pg Pool
+- **`POST /ingest`** → inline handler in `campus.js` (requires Bearer token) → spawns `run-ingestion-batch.js` asynchronously → Scrapers → Embedding Model → PostgreSQL

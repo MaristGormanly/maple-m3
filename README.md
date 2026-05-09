@@ -17,7 +17,7 @@ This module utilizes a Retrieval-Augmented Generation (RAG) pipeline to dynamica
 * **Frontend:** Angular 21 (standalone components)
 * **Database:** PostgreSQL with `pgvector` extension
 * **AI Models:** DGX Spark via Ollama (`llama3.1:8b` for generation, `nomic-embed-text` for embeddings)
-* **Data Pipeline:** Playwright, Cheerio
+* **Data Pipeline:** Playwright
 
 ## Setup & Running Locally
 
